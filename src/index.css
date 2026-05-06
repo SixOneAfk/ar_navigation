@@ -1,0 +1,179 @@
+:root {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #1a1f2e;
+  background-color: #eef2f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.app-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.camera-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  background: #0f1724;
+}
+
+.ar-canvas {
+  position: absolute !important;
+  inset: 0;
+  z-index: 1;
+}
+
+.camera-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 20;
+  width: min(360px, calc(100% - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ced8e6;
+  backdrop-filter: blur(6px);
+}
+
+.camera-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.camera-panel__text {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  color: #3a475d;
+}
+
+.camera-panel__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.camera-panel__btn {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  background: #0e57cc;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.camera-panel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.camera-panel__btn--secondary {
+  background: #e4eaf3;
+  color: #23324a;
+}
+
+.camera-panel__status {
+  margin: 0.7rem 0 0;
+  font-size: 0.84rem;
+  color: #1f2f47;
+}
+
+.camera-panel__status[data-state='denied'],
+.camera-panel__status[data-state='error'],
+.camera-panel__status[data-state='unsupported'] {
+  color: #a01616;
+}
+
+@media (max-width: 640px) {
+  .camera-panel {
+    top: auto;
+    bottom: 1rem;
+  }
+}
+
+/* ── Gyroscope panel ─────────────────────────────────────────── */
+.gyro-panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 20;
+  width: min(300px, calc(100% - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ced8e6;
+  backdrop-filter: blur(6px);
+}
+
+.gyro-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.gyro-panel__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.gyro-panel__btn {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  background: #0e57cc;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gyro-panel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gyro-panel__btn--secondary {
+  background: #e4eaf3;
+  color: #23324a;
+}
+
+.gyro-panel__status {
+  margin: 0.7rem 0 0;
+  font-size: 0.84rem;
+  color: #1f2f47;
+}
+
+.gyro-panel__status[data-state='denied'],
+.gyro-panel__status[data-state='unsupported'] {
+  color: #a01616;
+}
+
+.gyro-panel__status[data-state='granted'] {
+  color: #0a6f28;
+}
+
+@media (max-width: 640px) {
+  .gyro-panel {
+    top: auto;
+    bottom: 12rem; /* sits above camera panel on mobile */
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+  }
+}
