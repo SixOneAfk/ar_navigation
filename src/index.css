@@ -168,10 +168,95 @@ body,
   color: #0a6f28;
 }
 
+/* ── Acceleration panel ─────────────────────────────────────── */
+.accel-panel {
+  position: absolute;
+  top: 11rem;
+  right: 1rem;
+  z-index: 20;
+  width: min(320px, calc(100% - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ced8e6;
+  backdrop-filter: blur(6px);
+}
+
+.accel-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.accel-panel__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.accel-panel__btn {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  background: #0e57cc;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.accel-panel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.accel-panel__btn--secondary {
+  background: #e4eaf3;
+  color: #23324a;
+}
+
+.accel-readout {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.78rem;
+}
+
+.accel-readout__row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  background: rgba(232, 238, 249, 0.8);
+}
+
+.accel-panel__status {
+  margin: 0.7rem 0 0;
+  font-size: 0.84rem;
+  color: #1f2f47;
+}
+
+.accel-panel__status[data-state='denied'],
+.accel-panel__status[data-state='unsupported'] {
+  color: #a01616;
+}
+
+.accel-panel__status[data-state='granted'] {
+  color: #0a6f28;
+}
+
 @media (max-width: 640px) {
   .gyro-panel {
     top: auto;
     bottom: 12rem; /* sits above camera panel on mobile */
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+  }
+
+  .accel-panel {
+    top: auto;
+    bottom: 21rem;
     right: 1rem;
     left: 1rem;
     width: auto;

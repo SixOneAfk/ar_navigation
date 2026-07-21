@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type GyroState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported';
+export type GyroState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported' | 'insecure';
 
 /** Raw device orientation angles, updated every event tick. */
 export type Orientation = {
@@ -38,6 +38,11 @@ export function useGyroscope() {
   }
 
   async function requestPermission() {
+    if (!window.isSecureContext) {
+      setState('insecure');
+      return;
+    }
+
     if (typeof window.DeviceOrientationEvent === 'undefined') {
       setState('unsupported');
       return;

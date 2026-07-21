@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-type CameraState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported' | 'error';
+type CameraState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported' | 'insecure' | 'error';
 
 export function CameraPermissionPanel() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -16,6 +16,12 @@ export function CameraPermissionPanel() {
   }, []);
 
   async function requestCamera() {
+    if (!window.isSecureContext) {
+      setCameraState('insecure');
+      setErrorMessage('');
+      return;
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraState('unsupported');
       return;
@@ -107,6 +113,7 @@ export function CameraPermissionPanel() {
           {cameraState === 'granted' && 'Camera access granted. Live preview is active.'}
           {cameraState === 'denied' && 'Camera permission denied. Allow access in browser site settings.'}
           {cameraState === 'unsupported' && 'This browser does not support camera capture APIs.'}
+          {cameraState === 'insecure' && 'Camera requires HTTPS or localhost. Open the app from a secure origin.'}
           {cameraState === 'error' && `Camera error: ${errorMessage}`}
         </p>
       </section>

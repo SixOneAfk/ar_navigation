@@ -1,16 +1,16 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Orientation } from '../hooks/useGyroscope';
+import type { Vec3 } from '../hooks/useAcceleration';
 
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
   active: boolean;
+  translation?: Vec3;
+  basePosition?: Vec3;
 };
 
-//type Gyromovement = {
-  acceleration: React.RefObject<DeviceMotionEventAcceleration>;
-}
 
 // These constants follow the same derivation as the original Three.js
 // DeviceOrientationControls (since removed from the library):
@@ -22,10 +22,39 @@ const _zee = new THREE.Vector3(0, 0, 1);
 const _q0 = new THREE.Quaternion();
 const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -π/2 around X
 
-export function GyroCamera({ orientationRef, active }: GyroCameraProps) {
+export function GyroCamera({ orientationRef, active, translation, basePosition }: GyroCameraProps) {
   const { camera } = useThree();
   const targetQ = useRef(new THREE.Quaternion());
   const euler = useRef(new THREE.Euler());
+  const movementScale = 1.4;
+  const navPositionRef = useRef<Vec3>(basePosition ?? { x: 0, y: 1.6, z: 0 });
+  const lastTranslationRef = useRef<Vec3>({ x: 0, y: 0, z: 0 });
+
+  useEffect(() => {
+    const base = basePosition ?? { x: 0, y: 1.6, z: 0 };
+    navPositionRef.current = { ...base };
+    lastTranslationRef.current = { x: 0, y: 0, z: 0 };
+    camera.position.set(base.x, base.y, base.z);
+  }, [basePosition, camera]);
+
+  useFrame(() => {
+    if (!translation) return;
+
+    // Convert absolute integrated translation to per-frame deltas,
+    // then accumulate into a dynamic navigation position.
+    const deltaX = translation.x - lastTranslationRef.current.x;
+    const deltaY = translation.y - lastTranslationRef.current.y;
+
+    navPositionRef.current.x += deltaX * movementScale;
+    navPositionRef.current.z -= deltaY * movementScale;
+
+    lastTranslationRef.current = { ...translation };
+    camera.position.set(
+      navPositionRef.current.x,
+      navPositionRef.current.y,
+      navPositionRef.current.z,
+    );
+  });
 
   useFrame(() => {
     if (!active) return;
