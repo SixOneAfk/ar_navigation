@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { Html, useGLTF } from '@react-three/drei';
 import { GroupProps } from '@react-three/fiber';
+import * as THREE from 'three';
 
 type ModelSceneProps = {
   modelPath: string;
@@ -9,8 +10,30 @@ type ModelSceneProps = {
 
 function CorridorModel({ modelPath, ...props }: ModelSceneProps) {
   const gltf = useGLTF(modelPath);
+  const scene = gltf.scene.clone();
 
-  return <primitive object={gltf.scene} {...props} />;
+  const box = new THREE.Box3().setFromObject(scene);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDimension = Math.max(size.x, size.y, size.z) || 1;
+  const fitScale = 2.2 / maxDimension;
+
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  scene.position.set(-center.x, -center.y, -center.z);
+  scene.scale.setScalar(fitScale);
+
+  return (
+    <group>
+      <group position={[0, 0, 0]} rotation={[0, 0, 0]}>
+        <primitive object={scene} {...props} />
+      </group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.02, 0]}>
+        <circleGeometry args={[10, 64]} />
+        <meshStandardMaterial color="#dfe5ee" />
+      </mesh>
+    </group>
+  );
 }
 
 function FloorFallback() {

@@ -1,61 +1,126 @@
 import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { Orientation } from '../hooks/useGyroscope';
+import type { MotionData, Orientation } from '../hooks/useGyroscope';
 
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
+  motionRef: React.RefObject<MotionData>;
   active: boolean;
+  moveMode?: 'off' | 'gyro' | 'buttons' | 'walk';
+  buttonState?: { forward: boolean; backward: boolean; left: boolean; right: boolean; up: boolean; down: boolean };
+  sensitivity?: number;
+  walkSpeed?: number;
+  calibrationTarget?: { x: number; y: number; z: number };
+  calibrationMoveActive?: boolean;
+  onPoseChange?: (position: { x: number; y: number; z: number }) => void;
+  onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
 
-//type Gyromovement = {
-  acceleration: React.RefObject<DeviceMotionEventAcceleration>;
-}
+// Use a simpler, more stable mapping from device orientation to a camera rotation.
+// This avoids the extra frame conversions that were causing the scene to tilt.
 
-// These constants follow the same derivation as the original Three.js
-// DeviceOrientationControls (since removed from the library):
-// https://github.com/mrdoob/three.js/blob/master/examples/jsm/controls/DeviceOrientationControls.js
-//
-// The device sensor frame (Z-up) differs from the Three.js camera frame (Y-up).
-// q1 is the fixed -90° rotation around X that bridges the two.
-const _zee = new THREE.Vector3(0, 0, 1);
-const _q0 = new THREE.Quaternion();
-const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -π/2 around X
-
-export function GyroCamera({ orientationRef, active }: GyroCameraProps) {
+export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off', sensitivity = 0.6, walkSpeed = 1, buttonState, calibrationTarget, calibrationMoveActive = false, onPoseChange, onSensorChange }: GyroCameraProps) {
   const { camera } = useThree();
   const targetQ = useRef(new THREE.Quaternion());
   const euler = useRef(new THREE.Euler());
+  const moveDirection = useRef(new THREE.Vector3());
+  const strafeDirection = useRef(new THREE.Vector3());
+  const filteredAccel = useRef(0);
+  const walkVelocity = useRef(0);
+  const calibrationVec = useRef(new THREE.Vector3());
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!active) return;
 
     const orientation = orientationRef.current;
     if (!orientation) return;
     const { alpha, beta, gamma } = orientation;
 
-    // Map DeviceOrientation Euler angles into a quaternion.
-    // YXZ order matches the device sensor axes for portrait mode.
-    euler.current.set(
-      THREE.MathUtils.degToRad(beta),
-      THREE.MathUtils.degToRad(alpha),
-      THREE.MathUtils.degToRad(-gamma),
-      'YXZ',
-    );
+    // Keep the view level and only use yaw from the device.
+    // Pitch and roll are disabled so the world does not rotate around you.
+    euler.current.set(0, THREE.MathUtils.degToRad(alpha), 0, 'YXZ');
 
     targetQ.current.setFromEuler(euler.current);
-
-    // Bridge sensor frame → Three.js Y-up camera frame.
-    targetQ.current.multiply(_q1);
-
-    // Compensate for current screen orientation (portrait = 0, landscape = 90).
-    const screenAngle =
-      (window.screen?.orientation?.angle ?? 0) * (Math.PI / 180);
-    _q0.setFromAxisAngle(_zee, -screenAngle);
-    targetQ.current.multiply(_q0);
-
-    // Smooth interpolation prevents jitter from noisy sensors.
     camera.quaternion.slerp(targetQ.current, 0.12);
+
+    // Forward/back movement uses only explicit mode selection.
+    moveDirection.current.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    moveDirection.current.y = 0;
+    moveDirection.current.normalize();
+
+    // Left/right strafe uses only explicit mode selection.
+    strafeDirection.current.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    strafeDirection.current.y = 0;
+    strafeDirection.current.normalize();
+
+    const motion = motionRef.current;
+
+    if (calibrationMoveActive && calibrationTarget) {
+      calibrationVec.current.set(calibrationTarget.x, calibrationTarget.y, calibrationTarget.z);
+      camera.position.lerp(calibrationVec.current, 0.09);
+    }
+
+    const forwardTiltInput = THREE.MathUtils.clamp((beta - 16) / 40, -1, 1);
+    const strafeTiltInput = THREE.MathUtils.clamp(gamma / 50, -1, 1);
+
+    const forwardInput = forwardTiltInput;
+    const strafeInput = strafeTiltInput;
+
+    const gyroMoveAmount = Math.abs(forwardInput) < 0.12 ? 0 : forwardInput * 0.0035 * sensitivity;
+    const gyroStrafeAmount = Math.abs(strafeInput) < 0.12 ? 0 : strafeInput * 0.0035 * sensitivity;
+
+    let moveAmount = 0;
+    let strafeAmount = 0;
+    let verticalAmount = 0;
+
+    if (moveMode === 'gyro') {
+      moveAmount = gyroMoveAmount;
+      strafeAmount = gyroStrafeAmount;
+    } else if (moveMode === 'buttons') {
+      if (buttonState?.forward) moveAmount += 0.02;
+      if (buttonState?.backward) moveAmount -= 0.02;
+      if (buttonState?.left) strafeAmount -= 0.02;
+      if (buttonState?.right) strafeAmount += 0.02;
+      if (buttonState?.up) verticalAmount += 0.02;
+      if (buttonState?.down) verticalAmount -= 0.02;
+    } else if (moveMode === 'walk') {
+      const rawZAcceleration = motion?.z ?? 0;
+      const lowPassAlpha = 0.16;
+      const filteredZ = filteredAccel.current + lowPassAlpha * (rawZAcceleration - filteredAccel.current);
+      filteredAccel.current = filteredZ;
+
+      const threshold = 0.12;
+      const smoothedAccel = Math.abs(filteredZ) > threshold ? filteredZ : 0;
+      const dt = Math.max(delta, 0.016);
+
+      walkVelocity.current += smoothedAccel * dt * 0.9;
+      walkVelocity.current *= 0.84;
+      walkVelocity.current = THREE.MathUtils.clamp(walkVelocity.current, -1.2, 1.2);
+
+      moveAmount = walkVelocity.current * dt * 0.7 * sensitivity * walkSpeed;
+    }
+
+    camera.position.addScaledVector(moveDirection.current, moveAmount);
+    camera.position.addScaledVector(strafeDirection.current, strafeAmount);
+    camera.position.y += verticalAmount;
+
+    onSensorChange?.({
+      alpha,
+      beta,
+      gamma,
+      x: motion?.x ?? 0,
+      y: motion?.y ?? 0,
+      z: motion?.z ?? 0,
+    });
+
+    camera.position.y = Math.max(camera.position.y, 1.2);
+
+    onPoseChange?.({
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+    });
   });
 
   return null;

@@ -9,75 +9,150 @@ export type Orientation = {
   gamma: number; // left/right tilt  -90–90°
 };
 
+/** Linear acceleration in device coordinates, updated every event tick. */
+export type MotionData = {
+  x: number; // rightwards
+  y: number; // upwards
+  z: number; // out of screen toward user
+  timestamp: number;
+};
+
+export type CalibrationData = {
+  alphaOffset: number;
+  betaOffset: number;
+  gammaOffset: number;
+};
+
 export function useGyroscope() {
   const [state, setState] = useState<GyroState>('idle');
-  // Use a ref so GyroCamera can read the latest value inside useFrame
-  // without triggering re-renders on every sensor tick.
+  const [calibration, setCalibration] = useState<CalibrationData>({ alphaOffset: 0, betaOffset: 0, gammaOffset: 0 });
   const orientationRef = useRef<Orientation>({ alpha: 0, beta: 0, gamma: 0 });
+  const motionRef = useRef<MotionData>({ x: 0, y: 0, z: 0, timestamp: 0 });
 
-  // Keep a stable reference to the handler so we can remove it on cleanup.
-  const handlerRef = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
+  const orientationHandlerRef = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
+  const motionHandlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
 
   useEffect(() => {
     return () => {
-      if (handlerRef.current) {
-        window.removeEventListener('deviceorientation', handlerRef.current);
+      if (orientationHandlerRef.current) {
+        window.removeEventListener('deviceorientation', orientationHandlerRef.current, true);
+      }
+      if (motionHandlerRef.current) {
+        window.removeEventListener('devicemotion', motionHandlerRef.current, true);
       }
     };
   }, []);
 
-  function attachListener() {
-    handlerRef.current = (e: DeviceOrientationEvent) => {
+  function attachOrientationListener() {
+    orientationHandlerRef.current = (e: DeviceOrientationEvent) => {
       orientationRef.current = {
-        alpha: e.alpha ?? 0,
-        beta: e.beta ?? 0,
-        gamma: e.gamma ?? 0,
+        alpha: (e.alpha ?? 0) - calibration.alphaOffset,
+        beta: (e.beta ?? 0) - calibration.betaOffset,
+        gamma: (e.gamma ?? 0) - calibration.gammaOffset,
       };
     };
-    window.addEventListener('deviceorientation', handlerRef.current, true);
+    window.addEventListener('deviceorientation', orientationHandlerRef.current, true);
+  }
+
+  function attachMotionListener() {
+    motionHandlerRef.current = (e: DeviceMotionEvent) => {
+      const acceleration = e.acceleration ?? e.accelerationIncludingGravity ?? null;
+      if (!acceleration) {
+        return;
+      }
+
+      motionRef.current = {
+        x: acceleration.x ?? 0,
+        y: acceleration.y ?? 0,
+        z: acceleration.z ?? 0,
+        timestamp: e.timeStamp || Date.now(),
+      };
+    };
+    window.addEventListener('devicemotion', motionHandlerRef.current, true);
   }
 
   async function requestPermission() {
-    if (typeof window.DeviceOrientationEvent === 'undefined') {
+    const supportsOrientation = typeof window.DeviceOrientationEvent !== 'undefined';
+    const supportsMotion = typeof window.DeviceMotionEvent !== 'undefined';
+
+    if (!supportsOrientation && !supportsMotion) {
       setState('unsupported');
       return;
     }
 
-    // iOS 13+ requires an explicit user-gesture permission call.
-    const needsExplicitPermission =
+    const needsOrientationPermission =
       typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
         .requestPermission === 'function';
+    const needsMotionPermission =
+      typeof (DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> })
+        .requestPermission === 'function';
 
-    if (needsExplicitPermission) {
-      setState('requesting');
-      try {
-        const result = await (
-          DeviceOrientationEvent as unknown as { requestPermission: () => Promise<string> }
-        ).requestPermission();
+    setState('requesting');
 
-        if (result === 'granted') {
-          attachListener();
-          setState('granted');
+    try {
+      let orientationGranted = false;
+      let motionGranted = false;
+
+      if (supportsOrientation) {
+        if (needsOrientationPermission) {
+          const result = await (
+            DeviceOrientationEvent as unknown as { requestPermission: () => Promise<string> }
+          ).requestPermission();
+          orientationGranted = result === 'granted';
         } else {
-          setState('denied');
+          orientationGranted = true;
         }
-      } catch {
+      }
+
+      if (supportsMotion) {
+        if (needsMotionPermission) {
+          const result = await (
+            DeviceMotionEvent as unknown as { requestPermission: () => Promise<string> }
+          ).requestPermission();
+          motionGranted = result === 'granted';
+        } else {
+          motionGranted = true;
+        }
+      }
+
+      if (orientationGranted) {
+        attachOrientationListener();
+      }
+      if (motionGranted) {
+        attachMotionListener();
+      }
+
+      if (orientationGranted || motionGranted) {
+        setState('granted');
+      } else {
         setState('denied');
       }
-    } else {
-      // Android / desktop — no permission prompt required.
-      attachListener();
-      setState('granted');
+    } catch {
+      setState('denied');
     }
   }
 
   function stop() {
-    if (handlerRef.current) {
-      window.removeEventListener('deviceorientation', handlerRef.current, true);
-      handlerRef.current = null;
+    if (orientationHandlerRef.current) {
+      window.removeEventListener('deviceorientation', orientationHandlerRef.current, true);
+      orientationHandlerRef.current = null;
+    }
+    if (motionHandlerRef.current) {
+      window.removeEventListener('devicemotion', motionHandlerRef.current, true);
+      motionHandlerRef.current = null;
     }
     setState('idle');
   }
 
-  return { state, orientationRef, requestPermission, stop };
+  function calibrate() {
+    const current = orientationRef.current;
+    const newCalibration = {
+      alphaOffset: current.alpha,
+      betaOffset: current.beta,
+      gammaOffset: current.gamma,
+    };
+    setCalibration(newCalibration);
+  }
+
+  return { state, orientationRef, motionRef, calibration, calibrate, requestPermission, stop };
 }

@@ -1,21 +1,14 @@
 import { defineConfig } from 'vite';
-/*export default defineConfig({
-  plugins: [
-    react(),
-    basicSsl()
-],
-  server: {
-    host: true,
-    port: 5173
-  },
-});
-*/
+import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 export default defineConfig({
+    plugins: [
+        react(),
+        basicSsl()
+    ],
     server: {
-        allowedHosts: ['overbuilt-ethanol-kept.ngrok-free.dev'], // Твой адрес из консоли ngrok
-        host: true,
-        hmr: {
-            clientPort: 443 // Чтобы Hot Module Replacement работал через https ngrok
-        }
-    }
+        host: '0.0.0.0',
+        port: 5173,
+        allowedHosts: ['localhost', '127.0.0.1', '192.168.1.100']
+    },
 });
