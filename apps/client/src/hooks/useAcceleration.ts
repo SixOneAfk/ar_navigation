@@ -8,6 +8,7 @@ export type AccelSample = {
   intervalMs: number;
   raw: Vec3;
   withGravity: Vec3;
+  verticalAcceleration: number;
   velocity: Vec3;
   position: Vec3;
 };
@@ -28,14 +29,22 @@ export function useAcceleration() {
     intervalMs: 0,
     raw: { ...ZERO_VEC },
     withGravity: { ...ZERO_VEC },
+    verticalAcceleration: 0,
     velocity: { ...ZERO_VEC },
     position: { ...ZERO_VEC },
   });
+  const [stepCount, setStepCount] = useState(0);
   const handlerRef = useRef<((event: DeviceMotionEvent) => void) | null>(null);
   const lastLogRef = useRef(0);
   const lastEventAtRef = useRef<number | null>(null);
+  const lastStepAtRef = useRef(0);
+  const gravityMagnitudeRef = useRef(9.81);
   const velocityRef = useRef<Vec3>({ ...ZERO_VEC });
   const positionRef = useRef<Vec3>({ ...ZERO_VEC });
+
+  const STEP_THRESHOLD = 1.15;
+  const STEP_DEBOUNCE_MS = 350;
+  const GRAVITY_LP_ALPHA = 0.08;
 
   useEffect(() => {
     return () => {
@@ -62,6 +71,25 @@ export function useAcceleration() {
         y: sanitize(event.accelerationIncludingGravity?.y),
         z: sanitize(event.accelerationIncludingGravity?.z),
       };
+      const gravityMagnitude = Math.sqrt(
+        withGravity.x * withGravity.x +
+          withGravity.y * withGravity.y +
+          withGravity.z * withGravity.z,
+      );
+
+      gravityMagnitudeRef.current =
+        gravityMagnitudeRef.current * (1 - GRAVITY_LP_ALPHA) +
+        gravityMagnitude * GRAVITY_LP_ALPHA;
+
+      // High-pass the acceleration magnitude: this isolates vertical walking oscillation.
+      const verticalAcceleration = gravityMagnitude - gravityMagnitudeRef.current;
+      const verticalAmplitude = Math.abs(verticalAcceleration);
+      const msSinceLastStep = now - lastStepAtRef.current;
+
+      if (verticalAmplitude > STEP_THRESHOLD && msSinceLastStep >= STEP_DEBOUNCE_MS) {
+        lastStepAtRef.current = now;
+        setStepCount((prev) => prev + 1);
+      }
 
       velocityRef.current = {
         x: (velocityRef.current.x + raw.x * intervalSec) * 0.9,
@@ -79,6 +107,7 @@ export function useAcceleration() {
         intervalMs: event.interval || intervalSec * 1000,
         raw,
         withGravity,
+        verticalAcceleration,
         velocity: { ...velocityRef.current },
         position: { ...positionRef.current },
       });
@@ -93,6 +122,8 @@ export function useAcceleration() {
         intervalMs: event.interval || intervalSec * 1000,
         raw,
         withGravity,
+        verticalAcceleration,
+        stepCount,
         velocity: velocityRef.current,
         position: positionRef.current,
       });
@@ -149,12 +180,16 @@ export function useAcceleration() {
   function reset() {
     velocityRef.current = { ...ZERO_VEC };
     positionRef.current = { ...ZERO_VEC };
+    gravityMagnitudeRef.current = 9.81;
+    lastStepAtRef.current = 0;
+    setStepCount(0);
     setSample((prev) => ({
       ...prev,
+      verticalAcceleration: 0,
       velocity: { ...ZERO_VEC },
       position: { ...ZERO_VEC },
     }));
   }
 
-  return { state, sample, requestPermission, stop, reset };
+  return { state, sample, stepCount, requestPermission, stop, reset };
 }

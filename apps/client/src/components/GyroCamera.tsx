@@ -7,7 +7,9 @@ import type { Vec3 } from '../hooks/useAcceleration';
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
   active: boolean;
-  translation?: Vec3;
+  stepCount?: number;
+  stepStrideMeters?: number;
+  movementEnabled?: boolean;
   basePosition?: Vec3;
 };
 
@@ -22,38 +24,69 @@ const _zee = new THREE.Vector3(0, 0, 1);
 const _q0 = new THREE.Quaternion();
 const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -π/2 around X
 
-export function GyroCamera({ orientationRef, active, translation, basePosition }: GyroCameraProps) {
+export function GyroCamera({
+  orientationRef,
+  active,
+  stepCount = 0,
+  stepStrideMeters = 0.65,
+  movementEnabled = false,
+  basePosition,
+}: GyroCameraProps) {
   const { camera } = useThree();
   const targetQ = useRef(new THREE.Quaternion());
   const euler = useRef(new THREE.Euler());
-  const movementScale = 1.4;
   const navPositionRef = useRef<Vec3>(basePosition ?? { x: 0, y: 1.6, z: 0 });
-  const lastTranslationRef = useRef<Vec3>({ x: 0, y: 0, z: 0 });
+  const targetNavPositionRef = useRef(new THREE.Vector3());
+  const lastStepCountRef = useRef(stepCount);
+  const forwardRef = useRef(new THREE.Vector3());
+  const nextPositionRef = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const base = basePosition ?? { x: 0, y: 1.6, z: 0 };
     navPositionRef.current = { ...base };
-    lastTranslationRef.current = { x: 0, y: 0, z: 0 };
+    targetNavPositionRef.current.set(base.x, base.y, base.z);
+    lastStepCountRef.current = stepCount;
     camera.position.set(base.x, base.y, base.z);
-  }, [basePosition, camera]);
+  }, [basePosition, camera, stepCount]);
 
   useFrame(() => {
-    if (!translation) return;
+    if (!movementEnabled) {
+      lastStepCountRef.current = stepCount;
+      return;
+    }
 
-    // Convert absolute integrated translation to per-frame deltas,
-    // then accumulate into a dynamic navigation position.
-    const deltaX = translation.x - lastTranslationRef.current.x;
-    const deltaY = translation.y - lastTranslationRef.current.y;
+    if (stepCount > lastStepCountRef.current) {
+      camera.getWorldDirection(forwardRef.current);
 
-    navPositionRef.current.x += deltaX * movementScale;
-    navPositionRef.current.z -= deltaY * movementScale;
+      // Keep movement on the horizontal plane even if camera pitch changes.
+      forwardRef.current.y = 0;
+      if (forwardRef.current.lengthSq() > 0) {
+        forwardRef.current.normalize();
+      }
 
-    lastTranslationRef.current = { ...translation };
-    camera.position.set(
-      navPositionRef.current.x,
-      navPositionRef.current.y,
-      navPositionRef.current.z,
-    );
+      nextPositionRef.current
+        .set(
+          targetNavPositionRef.current.x,
+          navPositionRef.current.y,
+          targetNavPositionRef.current.z,
+        )
+        .addScaledVector(forwardRef.current, stepStrideMeters);
+
+      targetNavPositionRef.current.set(
+        nextPositionRef.current.x,
+        navPositionRef.current.y,
+        nextPositionRef.current.z,
+      );
+
+      lastStepCountRef.current = stepCount;
+    }
+
+    camera.position.lerp(targetNavPositionRef.current, 0.18);
+    navPositionRef.current = {
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+    };
   });
 
   useFrame(() => {

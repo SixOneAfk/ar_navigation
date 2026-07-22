@@ -13,6 +13,7 @@ export default function App() {
   const {
     state: accelState,
     sample: accelSample,
+    stepCount,
     requestPermission: requestAccelPermission,
     stop: stopAcceleration,
     reset: resetAcceleration,
@@ -102,6 +103,12 @@ export default function App() {
             <span>Y {format(accelSample.position.y)}</span>
             <span>Z {format(accelSample.position.z)}</span>
           </div>
+          <div className="accel-readout__row">
+            <span>PDR</span>
+            <span>Vert {format(accelSample.verticalAcceleration)}</span>
+            <span>Steps {stepCount}</span>
+            <span>Debounce 350ms</span>
+          </div>
         </div>
 
         <p className="accel-panel__status" data-state={accelState}>
@@ -130,7 +137,9 @@ export default function App() {
         <GyroCamera
           orientationRef={orientationRef}
           active={gyroActive}
-          translation={accelSample.position}
+          stepCount={stepCount}
+          movementEnabled={accelActive}
+          stepStrideMeters={0.65}
           basePosition={INITIAL_NAV_POSITION}
         />
 
