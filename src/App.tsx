@@ -12,7 +12,17 @@ const CALIBRATION_REFERENCE_DISTANCE = 0.5;
 const CALIBRATION_SAMPLE_COUNT = 5;
 
 export default function App() {
-  const { state: gyroState, orientationRef, motionRef, calibration, calibrate, requestPermission } = useGyroscope();
+  const {
+    state: gyroState,
+    orientationRef,
+    motionRef,
+    calibration,
+    motionCalibration,
+    motionCalibrating,
+    calibrate,
+    calibrateMotion,
+    requestPermission,
+  } = useGyroscope();
   const gyroActive = gyroState === 'granted';
   const [tracking, setTracking] = useState({ x: 0, y: 1.6, z: 0 });
   const [debugOpen, setDebugOpen] = useState(false);
@@ -227,6 +237,21 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
             <button type="button" onClick={beginCalibration}>{calibrationAxis === 'z' ? 'Mark 0.5 m Forward' : 'Calibrate Forward'}</button>
             <button type="button" onClick={() => { setCalibrationAxis(null); setCalibrationStart(null); setCalibrationStartedAt(null); setMeasuredCalibrationDistance(0); setCalibrationSamples([]); calibrationTravelRef.current = 0; calibrationPreviousRef.current = null; }} style={{ gridColumn: '1 / -1' }}>Reset calibration</button>
+          </div>
+        </div>
+        <div style={{ marginTop: '0.45rem' }}>
+          <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Accelerometer calibration</strong>
+          <div style={{ marginBottom: '0.35rem', fontSize: '0.72rem', opacity: 0.85 }}>
+            {motionCalibrating
+              ? 'Hold the device still for a moment while the app samples the resting bias.'
+              : 'Tap to calibrate accelerometer bias. Keep the device stationary on a flat surface.'}
+          </div>
+          <div style={{ marginBottom: '0.35rem', fontSize: '0.72rem', opacity: 0.85 }}>
+            Current bias: x {motionCalibration.xOffset.toFixed(2)} y {motionCalibration.yOffset.toFixed(2)} z {motionCalibration.zOffset.toFixed(2)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
+            <button type="button" onClick={calibrateMotion} disabled={motionCalibrating}>{motionCalibrating ? 'Calibrating…' : 'Calibrate Accelerometer'}</button>
+            <button type="button" onClick={() => setMotionCalibration({ xOffset: 0, yOffset: 0, zOffset: 0 })} style={{ gridColumn: '1 / -1' }}>Reset accelerometer</button>
           </div>
         </div>
         <div style={{ marginTop: '0.35rem' }}>

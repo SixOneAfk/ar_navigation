@@ -75,8 +75,10 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
     let verticalAmount = 0;
 
     if (moveMode === 'gyro') {
-      moveAmount = gyroMoveAmount;
-      strafeAmount = gyroStrafeAmount;
+      // Gyro mode now only rotates the camera using device yaw.
+      // Tilt is no longer used for movement to reduce noise.
+      moveAmount = 0;
+      strafeAmount = 0;
     } else if (moveMode === 'buttons') {
       if (buttonState?.forward) moveAmount += 0.02;
       if (buttonState?.backward) moveAmount -= 0.02;

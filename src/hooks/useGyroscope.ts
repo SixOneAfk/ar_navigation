@@ -23,14 +23,24 @@ export type CalibrationData = {
   gammaOffset: number;
 };
 
+export type MotionCalibration = {
+  xOffset: number;
+  yOffset: number;
+  zOffset: number;
+};
+
 export function useGyroscope() {
   const [state, setState] = useState<GyroState>('idle');
   const [calibration, setCalibration] = useState<CalibrationData>({ alphaOffset: 0, betaOffset: 0, gammaOffset: 0 });
+  const [motionCalibration, setMotionCalibration] = useState<MotionCalibration>({ xOffset: 0, yOffset: 0, zOffset: 0 });
+  const [motionCalibrating, setMotionCalibrating] = useState(false);
   const orientationRef = useRef<Orientation>({ alpha: 0, beta: 0, gamma: 0 });
   const motionRef = useRef<MotionData>({ x: 0, y: 0, z: 0, timestamp: 0 });
 
   const orientationHandlerRef = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
   const motionHandlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
+  const motionSampleRef = useRef<{ count: number; sumX: number; sumY: number; sumZ: number } | null>(null);
+  const motionCalibrationTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -39,6 +49,9 @@ export function useGyroscope() {
       }
       if (motionHandlerRef.current) {
         window.removeEventListener('devicemotion', motionHandlerRef.current, true);
+      }
+      if (motionCalibrationTimerRef.current !== null) {
+        window.clearTimeout(motionCalibrationTimerRef.current);
       }
     };
   }, []);
@@ -61,10 +74,24 @@ export function useGyroscope() {
         return;
       }
 
+      const rawX = acceleration.x ?? 0;
+      const rawY = acceleration.y ?? 0;
+      const rawZ = acceleration.z ?? 0;
+
+      if (motionCalibrating && motionSampleRef.current) {
+        const stationaryLimit = 2.0;
+        if (Math.abs(rawX) < stationaryLimit && Math.abs(rawY) < stationaryLimit && Math.abs(rawZ) < stationaryLimit) {
+          motionSampleRef.current.count += 1;
+          motionSampleRef.current.sumX += rawX;
+          motionSampleRef.current.sumY += rawY;
+          motionSampleRef.current.sumZ += rawZ;
+        }
+      }
+
       motionRef.current = {
-        x: acceleration.x ?? 0,
-        y: acceleration.y ?? 0,
-        z: acceleration.z ?? 0,
+        x: rawX - motionCalibration.xOffset,
+        y: rawY - motionCalibration.yOffset,
+        z: rawZ - motionCalibration.zOffset,
         timestamp: e.timeStamp || Date.now(),
       };
     };
@@ -154,5 +181,48 @@ export function useGyroscope() {
     setCalibration(newCalibration);
   }
 
-  return { state, orientationRef, motionRef, calibration, calibrate, requestPermission, stop };
+  function finishMotionCalibration() {
+    if (!motionSampleRef.current || motionSampleRef.current.count === 0) {
+      motionSampleRef.current = null;
+      setMotionCalibrating(false);
+      motionCalibrationTimerRef.current = null;
+      return;
+    }
+
+    const { count, sumX, sumY, sumZ } = motionSampleRef.current;
+    setMotionCalibration({
+      xOffset: sumX / count,
+      yOffset: sumY / count,
+      zOffset: sumZ / count,
+    });
+
+    motionSampleRef.current = null;
+    setMotionCalibrating(false);
+    motionCalibrationTimerRef.current = null;
+  }
+
+  function calibrateMotion() {
+    if (motionCalibrating) {
+      return;
+    }
+
+    motionSampleRef.current = { count: 0, sumX: 0, sumY: 0, sumZ: 0 };
+    setMotionCalibrating(true);
+    motionCalibrationTimerRef.current = window.setTimeout(() => {
+      finishMotionCalibration();
+    }, 1200);
+  }
+
+  return {
+    state,
+    orientationRef,
+    motionRef,
+    calibration,
+    motionCalibration,
+    motionCalibrating,
+    calibrate,
+    calibrateMotion,
+    requestPermission,
+    stop,
+  };
 }
