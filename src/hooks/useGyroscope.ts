@@ -181,6 +181,10 @@ export function useGyroscope() {
     setCalibration(newCalibration);
   }
 
+  function resetMotionCalibration() {
+    setMotionCalibration({ xOffset: 0, yOffset: 0, zOffset: 0 });
+  }
+
   function finishMotionCalibration() {
     if (!motionSampleRef.current || motionSampleRef.current.count === 0) {
       motionSampleRef.current = null;
@@ -223,6 +227,7 @@ export function useGyroscope() {
     calibrate,
     calibrateMotion,
     requestPermission,
+    resetMotionCalibration,
     stop,
   };
 }
