@@ -5,7 +5,6 @@ import java.util.Collections;
 import java.util.List;
 
 import org.opencv.core.Core;
-import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.core.MatOfFloat;
@@ -53,7 +52,6 @@ public final class CameraTracker {
     private final Mat grayFrame;
     private final Mat previousGrayFrame;
     private final MatOfPoint2f previousPoints;
-    private final MatOfPoint2f currentPoints;
     private final MatOfByte status;
     private final MatOfFloat error;
     private boolean hasPreviousFrame;
@@ -68,7 +66,6 @@ public final class CameraTracker {
         this.grayFrame = new Mat();
         this.previousGrayFrame = new Mat();
         this.previousPoints = new MatOfPoint2f();
-        this.currentPoints = new MatOfPoint2f();
         this.status = new MatOfByte();
         this.error = new MatOfFloat();
         this.hasPreviousFrame = false;
@@ -130,7 +127,6 @@ public final class CameraTracker {
         grayFrame.release();
         previousGrayFrame.release();
         previousPoints.release();
-        currentPoints.release();
         status.release();
         error.release();
     }

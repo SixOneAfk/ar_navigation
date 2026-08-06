@@ -24,15 +24,9 @@ package com.example.indoorpositioning;
  */
 public final class ExtendedKalmanFilter {
     private final double[] state;
-    private final double[][] covariance;
 
     public ExtendedKalmanFilter() {
         this.state = new double[] {0.0, 0.0, 0.0};
-        this.covariance = new double[][] {
-                {1.0, 0.0, 0.0},
-                {0.0, 1.0, 0.0},
-                {0.0, 0.0, 1.0}
-        };
     }
 
     public double[] update(double[] predictedPosition, CameraFeatureTracker cameraObservation) {

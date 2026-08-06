@@ -24,6 +24,12 @@ export default function App() {
     calibrateMotion,
     requestPermission,
     resetMotionCalibration,
+    orientationEventCount,
+    motionEventCount,
+    lastOrientationTs,
+    lastMotionTs,
+    lastOrientationValues,
+    lastMotionValues,
   } = useGyroscope();
   const gyroActive = gyroState === 'granted';
   const [tracking, setTracking] = useState({ x: 0, y: 1.6, z: 0 });
@@ -45,6 +51,25 @@ export default function App() {
   const [sensorSnapshot, setSensorSnapshot] = useState({ alpha: 0, beta: 0, gamma: 0, x: 0, y: 0, z: 0 });
   const worldAnchor: [number, number, number] = [0, 0, -2];
   const cameraActive = (gyroActive && (moveMode === 'gyro' || moveMode === 'walk')) || moveMode === 'buttons';
+  const debugEnabled = import.meta.env?.VITE_DEBUG_SENSORS === 'true';
+  const debugStatus = {
+    permissionState: gyroState,
+    orientationConnected: Boolean(orientationEventCount.current && orientationEventCount.current > 0),
+    motionConnected: Boolean(motionEventCount.current && motionEventCount.current > 0),
+    orientation: lastOrientationValues.current ?? { alpha: 0, beta: 0, gamma: 0 },
+    acceleration: lastMotionValues.current ?? { x: 0, y: 0, z: 0, timestamp: 0 },
+    calibration: {
+      alphaOffset: calibration.alphaOffset,
+      betaOffset: calibration.betaOffset,
+      gammaOffset: calibration.gammaOffset,
+      xOffset: motionCalibration.xOffset,
+      yOffset: motionCalibration.yOffset,
+      zOffset: motionCalibration.zOffset,
+    },
+    cameraPosition: tracking,
+    moveMode,
+    lastSensorUpdate: Math.max(lastOrientationTs.current ?? 0, lastMotionTs.current ?? 0) || null,
+  };
 
   const relativeToModel = {
     x: tracking.x - worldAnchor[0],
@@ -210,6 +235,8 @@ export default function App() {
         calibrate={calibrate}
         calibrateMotion={calibrateMotion}
         resetMotionCalibration={resetMotionCalibration}
+        debugEnabled={debugEnabled}
+        debugStatus={debugStatus}
       />
 
       {debugOpen && (

@@ -54,6 +54,18 @@ type SidebarProps = {
   calibrate: () => void;
   calibrateMotion: () => void;
   resetMotionCalibration: () => void;
+  debugEnabled?: boolean;
+  debugStatus?: {
+    permissionState: string;
+    orientationConnected: boolean;
+    motionConnected: boolean;
+    orientation: { alpha: number; beta: number; gamma: number };
+    acceleration: { x: number; y: number; z: number };
+    calibration: { alphaOffset: number; betaOffset: number; gammaOffset: number; xOffset: number; yOffset: number; zOffset: number };
+    cameraPosition: { x: number; y: number; z: number };
+    moveMode: MoveMode;
+    lastSensorUpdate: number | null;
+  };
 };
 
 /**
@@ -95,6 +107,8 @@ export function Sidebar({
   calibrate,
   calibrateMotion,
   resetMotionCalibration,
+  debugEnabled = false,
+  debugStatus,
 }: SidebarProps) {
   return (
     <>
@@ -220,6 +234,22 @@ export function Sidebar({
               <button type="button" className="sidebar__btn sidebar__btn--secondary" onClick={() => setDebugOpen((value) => !value)}>Toggle Debug</button>
               <button type="button" className="sidebar__btn sidebar__btn--secondary" onClick={() => setDebugWindowOpen(true)}>Open Debug Window</button>
             </div>
+
+            {debugEnabled && debugStatus && (
+              <div className="sidebar__debug-panel" style={{ marginTop: '0.75rem', padding: '0.75rem', borderRadius: '10px', background: 'rgba(15, 23, 42, 0.8)', color: '#e2e8f0', fontSize: '0.8rem', lineHeight: 1.45 }}>
+                <div><strong>Sensor status</strong></div>
+                <div>Permission: {debugStatus.permissionState}</div>
+                <div>Orientation connected: {debugStatus.orientationConnected ? 'yes' : 'no'}</div>
+                <div>Motion connected: {debugStatus.motionConnected ? 'yes' : 'no'}</div>
+                <div>Orientation: {debugStatus.orientation.alpha.toFixed(1)}, {debugStatus.orientation.beta.toFixed(1)}, {debugStatus.orientation.gamma.toFixed(1)}</div>
+                <div>Acceleration: {debugStatus.acceleration.x.toFixed(2)}, {debugStatus.acceleration.y.toFixed(2)}, {debugStatus.acceleration.z.toFixed(2)}</div>
+                <div>Calibration: alpha {debugStatus.calibration.alphaOffset.toFixed(2)} beta {debugStatus.calibration.betaOffset.toFixed(2)} gamma {debugStatus.calibration.gammaOffset.toFixed(2)}</div>
+                <div>Motion offsets: x {debugStatus.calibration.xOffset.toFixed(2)} y {debugStatus.calibration.yOffset.toFixed(2)} z {debugStatus.calibration.zOffset.toFixed(2)}</div>
+                <div>Camera: {debugStatus.cameraPosition.x.toFixed(2)}, {debugStatus.cameraPosition.y.toFixed(2)}, {debugStatus.cameraPosition.z.toFixed(2)}</div>
+                <div>Mode: {debugStatus.moveMode}</div>
+                <div>Last update: {debugStatus.lastSensorUpdate ? new Date(debugStatus.lastSensorUpdate).toLocaleTimeString() : 'none'}</div>
+              </div>
+            )}
           </section>
 
           {moveMode === 'buttons' && (

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { MotionData, Orientation } from '../hooks/useGyroscope';
+import { createDebugLogger } from '../utils/debugLogger';
 
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
@@ -23,6 +24,7 @@ type GyroCameraProps = {
  */
 export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off', sensitivity = 0.6, walkSpeed = 1, buttonState, calibrationTarget, calibrationMoveActive = false, onPoseChange, onSensorChange }: GyroCameraProps) {
   const { camera } = useThree();
+  const logger = useRef(createDebugLogger({ enabled: import.meta.env?.VITE_DEBUG_SENSORS === 'true' }));
   const targetQ = useRef(new THREE.Quaternion());
   const euler = useRef(new THREE.Euler());
   const moveDirection = useRef(new THREE.Vector3());
@@ -35,14 +37,18 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
   // Store the initial heading once the camera becomes active so later updates are relative.
   useEffect(() => {
     if (!active) {
+      logger.current.info('GyroCamera', 'Camera deactivated');
       baseAlphaRef.current = null;
       return;
     }
 
+    logger.current.info('GyroCamera', `Camera activated with moveMode=${moveMode}`);
+
     if (baseAlphaRef.current === null) {
       baseAlphaRef.current = orientationRef.current?.alpha ?? 0;
+      logger.current.info('GyroCamera', `Base alpha set to ${baseAlphaRef.current.toFixed(2)}`);
     }
-  }, [active, orientationRef]);
+  }, [active, moveMode, orientationRef]);
 
   useFrame((_, delta) => {
     if (!active) return;
@@ -53,6 +59,8 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
     // Calculate the camera yaw from the device heading relative to the initial orientation.
     const baseAlpha = baseAlphaRef.current ?? orientation.alpha;
     const relativeAlpha = ((orientation.alpha - baseAlpha + 540) % 360) - 180;
+
+    logger.current.debug('GyroCamera', `baseAlpha=${baseAlpha.toFixed(2)} relativeAlpha=${relativeAlpha.toFixed(2)}`);
 
     euler.current.set(0, THREE.MathUtils.degToRad(relativeAlpha), 0, 'YXZ');
     targetQ.current.setFromEuler(euler.current);
@@ -81,6 +89,8 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
     const gyroMoveAmount = Math.abs(forwardTiltInput) < 0.12 ? 0 : forwardTiltInput * 0.0035 * sensitivity;
     const gyroStrafeAmount = Math.abs(strafeTiltInput) < 0.12 ? 0 : strafeTiltInput * 0.0035 * sensitivity;
 
+    logger.current.debug('GyroCamera', `gyro inputs: forwardTilt=${forwardTiltInput.toFixed(3)} strafeTilt=${strafeTiltInput.toFixed(3)} move=${gyroMoveAmount.toFixed(4)} strafe=${gyroStrafeAmount.toFixed(4)}`);
+
     let moveAmount = 0;
     let strafeAmount = 0;
     let verticalAmount = 0;
@@ -88,6 +98,9 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
     if (moveMode === 'gyro') {
       moveAmount = gyroMoveAmount;
       strafeAmount = gyroStrafeAmount;
+      if (moveAmount === 0 && strafeAmount === 0) {
+        logger.current.debug('GyroCamera', 'Movement blocked: gyro tilt below threshold');
+      }
     } else if (moveMode === 'buttons') {
       if (buttonState?.forward) moveAmount += 0.02;
       if (buttonState?.backward) moveAmount -= 0.02;
@@ -112,6 +125,15 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
       walkVelocity.current = THREE.MathUtils.clamp(walkVelocity.current, -1.2, 1.2);
 
       moveAmount = walkVelocity.current * dt * 0.7 * sensitivity * walkSpeed;
+      logger.current.debug('GyroCamera', `walk inputs: rawAccel=${rawZAcceleration.toFixed(3)} filtered=${filteredZ.toFixed(3)} velocity=${walkVelocity.current.toFixed(3)} move=${moveAmount.toFixed(4)}`);
+
+      if (moveAmount === 0) {
+        logger.current.debug('GyroCamera', 'Movement blocked: acceleration below walking threshold');
+      }
+    }
+
+    if (moveMode === 'off') {
+      logger.current.debug('GyroCamera', 'Movement blocked: moveMode is off');
     }
 
     // Apply all movement vectors to the camera position.
