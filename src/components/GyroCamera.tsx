@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { MotionData, Orientation } from '../hooks/useGyroscope';
@@ -17,9 +17,6 @@ type GyroCameraProps = {
   onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
 
-// Use a simpler, more stable mapping from device orientation to a camera rotation.
-// This avoids the extra frame conversions that were causing the scene to tilt.
-
 export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off', sensitivity = 0.6, walkSpeed = 1, buttonState, calibrationTarget, calibrationMoveActive = false, onPoseChange, onSensorChange }: GyroCameraProps) {
   const { camera } = useThree();
   const targetQ = useRef(new THREE.Quaternion());
@@ -29,27 +26,36 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
   const filteredAccel = useRef(0);
   const walkVelocity = useRef(0);
   const calibrationVec = useRef(new THREE.Vector3());
+  const baseAlphaRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      baseAlphaRef.current = null;
+      return;
+    }
+
+    if (baseAlphaRef.current === null) {
+      baseAlphaRef.current = orientationRef.current?.alpha ?? 0;
+    }
+  }, [active, orientationRef]);
 
   useFrame((_, delta) => {
     if (!active) return;
 
     const orientation = orientationRef.current;
     if (!orientation) return;
-    const { alpha, beta, gamma } = orientation;
 
-    // Keep the view level and only use yaw from the device.
-    // Pitch and roll are disabled so the world does not rotate around you.
-    euler.current.set(0, THREE.MathUtils.degToRad(alpha), 0, 'YXZ');
+    const baseAlpha = baseAlphaRef.current ?? orientation.alpha;
+    const relativeAlpha = ((orientation.alpha - baseAlpha + 540) % 360) - 180;
 
+    euler.current.set(0, THREE.MathUtils.degToRad(relativeAlpha), 0, 'YXZ');
     targetQ.current.setFromEuler(euler.current);
     camera.quaternion.slerp(targetQ.current, 0.12);
 
-    // Forward/back movement uses only explicit mode selection.
     moveDirection.current.set(0, 0, -1).applyQuaternion(camera.quaternion);
     moveDirection.current.y = 0;
     moveDirection.current.normalize();
 
-    // Left/right strafe uses only explicit mode selection.
     strafeDirection.current.set(1, 0, 0).applyQuaternion(camera.quaternion);
     strafeDirection.current.y = 0;
     strafeDirection.current.normalize();
@@ -61,24 +67,18 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
       camera.position.lerp(calibrationVec.current, 0.09);
     }
 
-    const forwardTiltInput = THREE.MathUtils.clamp((beta - 16) / 40, -1, 1);
-    const strafeTiltInput = THREE.MathUtils.clamp(gamma / 50, -1, 1);
-
-    const forwardInput = forwardTiltInput;
-    const strafeInput = strafeTiltInput;
-
-    const gyroMoveAmount = Math.abs(forwardInput) < 0.12 ? 0 : forwardInput * 0.0035 * sensitivity;
-    const gyroStrafeAmount = Math.abs(strafeInput) < 0.12 ? 0 : strafeInput * 0.0035 * sensitivity;
+    const forwardTiltInput = THREE.MathUtils.clamp((orientation.beta - 16) / 40, -1, 1);
+    const strafeTiltInput = THREE.MathUtils.clamp(orientation.gamma / 50, -1, 1);
+    const gyroMoveAmount = Math.abs(forwardTiltInput) < 0.12 ? 0 : forwardTiltInput * 0.0035 * sensitivity;
+    const gyroStrafeAmount = Math.abs(strafeTiltInput) < 0.12 ? 0 : strafeTiltInput * 0.0035 * sensitivity;
 
     let moveAmount = 0;
     let strafeAmount = 0;
     let verticalAmount = 0;
 
     if (moveMode === 'gyro') {
-      // Gyro mode now only rotates the camera using device yaw.
-      // Tilt is no longer used for movement to reduce noise.
-      moveAmount = 0;
-      strafeAmount = 0;
+      moveAmount = gyroMoveAmount;
+      strafeAmount = gyroStrafeAmount;
     } else if (moveMode === 'buttons') {
       if (buttonState?.forward) moveAmount += 0.02;
       if (buttonState?.backward) moveAmount -= 0.02;
@@ -106,23 +106,18 @@ export function GyroCamera({ orientationRef, motionRef, active, moveMode = 'off'
     camera.position.addScaledVector(moveDirection.current, moveAmount);
     camera.position.addScaledVector(strafeDirection.current, strafeAmount);
     camera.position.y += verticalAmount;
+    camera.position.y = Math.max(camera.position.y, 1.2);
 
     onSensorChange?.({
-      alpha,
-      beta,
-      gamma,
+      alpha: orientation.alpha,
+      beta: orientation.beta,
+      gamma: orientation.gamma,
       x: motion?.x ?? 0,
       y: motion?.y ?? 0,
       z: motion?.z ?? 0,
     });
 
-    camera.position.y = Math.max(camera.position.y, 1.2);
-
-    onPoseChange?.({
-      x: camera.position.x,
-      y: camera.position.y,
-      z: camera.position.z,
-    });
+    onPoseChange?.({ x: camera.position.x, y: camera.position.y, z: camera.position.z });
   });
 
   return null;
