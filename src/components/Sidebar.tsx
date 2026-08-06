@@ -56,6 +56,10 @@ type SidebarProps = {
   resetMotionCalibration: () => void;
 };
 
+/**
+ * Main control surface for the AR experience.
+ * It groups the sensor setup, tracking data, movement modes, and calibration tools.
+ */
 export function Sidebar({
   isMenuOpen,
   onToggleMenu,
@@ -116,6 +120,7 @@ export function Sidebar({
         </div>
 
         <div className="sidebar__content">
+          {/* Sensor permission panel shown until the gyroscope is ready. */}
           {!gyroActive && (
             <section className="sidebar__panel">
               <h2 className="sidebar__title">Gyroscope</h2>
@@ -140,6 +145,7 @@ export function Sidebar({
             </section>
           )}
 
+          {/* Tracking details and movement mode controls. */}
           <section className="sidebar__panel">
             <div className="sidebar__section-heading">
               <h2 className="sidebar__title">Tracking</h2>
@@ -173,6 +179,7 @@ export function Sidebar({
             </div>
           </section>
 
+          {/* Calibration flow for the walk-based movement model. */}
           <section className="sidebar__panel">
             <h2 className="sidebar__title">Movement calibration</h2>
             <p className="sidebar__hint">
@@ -190,6 +197,7 @@ export function Sidebar({
             </div>
           </section>
 
+          {/* Calibration for the accelerometer bias that can skew movement. */}
           <section className="sidebar__panel">
             <h2 className="sidebar__title">Accelerometer calibration</h2>
             <p className="sidebar__hint">
@@ -206,6 +214,7 @@ export function Sidebar({
             </div>
           </section>
 
+          {/* Debug shortcuts for showing the live sensor overlay. */}
           <section className="sidebar__panel">
             <div className="sidebar__button-grid sidebar__button-grid--compact">
               <button type="button" className="sidebar__btn sidebar__btn--secondary" onClick={() => setDebugOpen((value) => !value)}>Toggle Debug</button>

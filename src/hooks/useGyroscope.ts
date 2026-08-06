@@ -29,6 +29,11 @@ export type MotionCalibration = {
   zOffset: number;
 };
 
+/**
+ * Hook that bridges the browser's motion APIs to the AR experience.
+ * It collects orientation and motion data, handles sensor permission requests,
+ * and provides calibration helpers for both orientation and acceleration.
+ */
 export function useGyroscope() {
   const [state, setState] = useState<GyroState>('idle');
   const [calibration, setCalibration] = useState<CalibrationData>({ alphaOffset: 0, betaOffset: 0, gammaOffset: 0 });
@@ -42,6 +47,7 @@ export function useGyroscope() {
   const motionSampleRef = useRef<{ count: number; sumX: number; sumY: number; sumZ: number } | null>(null);
   const motionCalibrationTimerRef = useRef<number | null>(null);
 
+  // Clean up listeners when the hook is unmounted.
   useEffect(() => {
     return () => {
       if (orientationHandlerRef.current) {
@@ -56,6 +62,7 @@ export function useGyroscope() {
     };
   }, []);
 
+  // Attach a listener that stores the device's orientation and applies the current calibration offsets.
   function attachOrientationListener() {
     orientationHandlerRef.current = (e: DeviceOrientationEvent) => {
       orientationRef.current = {
@@ -67,6 +74,7 @@ export function useGyroscope() {
     window.addEventListener('deviceorientation', orientationHandlerRef.current, true);
   }
 
+  // Attach a listener that stores the device's acceleration after subtracting the bias calibration.
   function attachMotionListener() {
     motionHandlerRef.current = (e: DeviceMotionEvent) => {
       const acceleration = e.acceleration ?? e.accelerationIncludingGravity ?? null;
@@ -171,6 +179,7 @@ export function useGyroscope() {
     setState('idle');
   }
 
+  // Save the current orientation as the baseline for later calibration.
   function calibrate() {
     const current = orientationRef.current;
     const newCalibration = {
@@ -185,6 +194,7 @@ export function useGyroscope() {
     setMotionCalibration({ xOffset: 0, yOffset: 0, zOffset: 0 });
   }
 
+  // Average the stationary samples gathered during accelerometer calibration.
   function finishMotionCalibration() {
     if (!motionSampleRef.current || motionSampleRef.current.count === 0) {
       motionSampleRef.current = null;
@@ -205,6 +215,7 @@ export function useGyroscope() {
     motionCalibrationTimerRef.current = null;
   }
 
+  // Collect a short burst of motion samples while the device is held still.
   function calibrateMotion() {
     if (motionCalibrating) {
       return;
