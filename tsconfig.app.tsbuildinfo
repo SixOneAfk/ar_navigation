@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/camerapermissionpanel.tsx","./src/components/debugoverlay.tsx","./src/components/gyrocamera.tsx","./src/components/modelscene.tsx","./src/hooks/usegyroscope.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/camerapermissionpanel.tsx","./src/components/debugoverlay.tsx","./src/components/gyrocamera.tsx","./src/components/modelscene.tsx","./src/components/sidebar.tsx","./src/hooks/usegyroscope.ts"],"version":"5.9.3"}

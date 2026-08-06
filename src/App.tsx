@@ -6,6 +6,7 @@ import { ModelScene } from './components/ModelScene';
 import { CameraPermissionPanel } from './components/CameraPermissionPanel';
 import { GyroCamera } from './components/GyroCamera';
 import { DebugOverlay } from './components/DebugOverlay';
+import { Sidebar } from './components/Sidebar';
 import { useGyroscope } from './hooks/useGyroscope';
 
 const CALIBRATION_REFERENCE_DISTANCE = 0.5;
@@ -22,10 +23,12 @@ export default function App() {
     calibrate,
     calibrateMotion,
     requestPermission,
+    resetMotionCalibration,
   } = useGyroscope();
   const gyroActive = gyroState === 'granted';
   const [tracking, setTracking] = useState({ x: 0, y: 1.6, z: 0 });
   const [debugOpen, setDebugOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(true);
   const [debugWindowOpen, setDebugWindowOpen] = useState(false);
   const [moveMode, setMoveMode] = useState<'off' | 'gyro' | 'buttons' | 'walk'>('off');
   const [buttonState, setButtonState] = useState({ forward: false, backward: false, left: false, right: false, up: false, down: false });
@@ -163,175 +166,51 @@ export default function App() {
       {/* ── Sensor permission panels ── */}
       <CameraPermissionPanel />
 
-      {!gyroActive && (
-        <div className="gyro-panel">
-          <h2 className="gyro-panel__title">Gyroscope</h2>
-
-          <div className="gyro-panel__actions">
-            <button
-              type="button"
-              className="gyro-panel__btn"
-              onClick={requestPermission}
-              disabled={gyroState === 'requesting'}
-            >
-              {gyroState === 'requesting' ? 'Requesting…' : 'Enable Gyro & Motion'}
-            </button>
-          </div>
-
-          <p className="gyro-panel__status" data-state={gyroState}>
-            {gyroState === 'idle' && 'Gyroscope not active.'}
-            {gyroState === 'requesting' && 'Waiting for permission…'}
-            {gyroState === 'denied' && 'Permission denied. Allow motion sensors in browser settings.'}
-            {gyroState === 'unsupported' && 'DeviceOrientationEvent not supported on this device.'}
-          </p>
-        </div>
-      )}
-
-      <div
-        style={{
-          position: 'absolute',
-          top: '1rem',
-          right: '1rem',
-          zIndex: 20,
-          padding: '0.75rem 0.9rem',
-          borderRadius: '12px',
-          background: 'rgba(15, 23, 42, 0.82)',
-          color: '#f8fafc',
-          fontSize: '0.85rem',
-          lineHeight: 1.4,
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)',
-          maxWidth: '280px',
+      <Sidebar
+        isMenuOpen={isMenuOpen}
+        onToggleMenu={() => setIsMenuOpen((value) => !value)}
+        gyroState={gyroState}
+        gyroActive={gyroActive}
+        requestPermission={requestPermission}
+        worldAnchor={worldAnchor}
+        tracking={tracking}
+        relativeToModel={relativeToModel}
+        distanceToModel={distanceToModel}
+        sensitivity={sensitivity}
+        walkSpeed={walkSpeed}
+        calibrationAxis={calibrationAxis}
+        calibrationDistance={calibrationDistance}
+        calibrationSamples={calibrationSamples}
+        calibrationSampleCount={CALIBRATION_SAMPLE_COUNT}
+        calibrationReferenceDistance={CALIBRATION_REFERENCE_DISTANCE}
+        motionCalibration={motionCalibration}
+        motionCalibrating={motionCalibrating}
+        moveMode={moveMode}
+        joystick={joystick}
+        buttonState={buttonState}
+        setMoveMode={setMoveMode}
+        setSensitivity={setSensitivity}
+        setWalkSpeed={setWalkSpeed}
+        setDebugOpen={setDebugOpen}
+        setDebugWindowOpen={setDebugWindowOpen}
+        onJoystickPointerDown={handleJoystickPointerDown}
+        onJoystickPointerMove={handleJoystickPointerMove}
+        onJoystickRelease={handleJoystickRelease}
+        setButtonState={setButtonState}
+        beginCalibration={beginCalibration}
+        resetCalibration={() => {
+          setCalibrationAxis(null);
+          setCalibrationStart(null);
+          setCalibrationStartedAt(null);
+          setMeasuredCalibrationDistance(0);
+          setCalibrationSamples([]);
+          calibrationTravelRef.current = 0;
+          calibrationPreviousRef.current = null;
         }}
-      >
-        <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Tracking</strong>
-        <div>Model origin: {worldAnchor.join(', ')}</div>
-        <div>Camera: {tracking.x.toFixed(1)}, {tracking.y.toFixed(1)}, {tracking.z.toFixed(1)}</div>
-        <div>Relative: {relativeToModel.x.toFixed(1)}, {relativeToModel.y.toFixed(1)}, {relativeToModel.z.toFixed(1)}</div>
-        <div>Distance: {distanceToModel.toFixed(2)}</div>
-        <div style={{ marginTop: '0.5rem' }}>
-          <button type="button" onClick={calibrate} style={{ marginRight: '0.35rem' }}>Calibrate</button>
-          <button type="button" onClick={() => setMoveMode('off')}>Move Off</button>
-          <button type="button" onClick={() => setMoveMode('gyro')}>Gyro Move</button>
-          <button type="button" onClick={() => setMoveMode('walk')}>Walk Forward</button>
-          <button type="button" onClick={() => setMoveMode('buttons')}>Buttons</button>
-        </div>
-        <div style={{ marginTop: '0.35rem' }}>
-          <label htmlFor="sensitivity" style={{ display: 'block', marginBottom: '0.2rem' }}>Sensitivity: {sensitivity.toFixed(1)}</label>
-          <input id="sensitivity" type="range" min="0.2" max="1.5" step="0.1" value={sensitivity} onChange={(event) => setSensitivity(Number(event.target.value))} />
-        </div>
-        <div style={{ marginTop: '0.35rem' }}>
-          <label htmlFor="walk-speed" style={{ display: 'block', marginBottom: '0.2rem' }}>Walk speed (manual): {walkSpeed.toFixed(1)}</label>
-          <input id="walk-speed" type="range" min="0.2" max="100" step="0.1" value={walkSpeed} onChange={(event) => setWalkSpeed(Number(event.target.value))} />
-        </div>
-        <div style={{ marginTop: '0.45rem' }}>
-          <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Movement calibration</strong>
-          <div style={{ marginBottom: '0.35rem', fontSize: '0.72rem', opacity: 0.85 }}>
-            {calibrationAxis === 'z'
-              ? `Calibrating forward travel: move slowly and steadily for about ${CALIBRATION_REFERENCE_DISTANCE.toFixed(1)} m, then press again. Only forward motion is counted.`
-              : `Press start, take ${CALIBRATION_SAMPLE_COUNT} short forward samples of about ${CALIBRATION_REFERENCE_DISTANCE.toFixed(1)} m each, then the app will average them and update the walk speed.`}
-          </div>
-          <div style={{ marginBottom: '0.35rem', fontSize: '0.72rem', opacity: 0.85 }}>
-            Distance measured: {calibrationDistance.toFixed(2)} m
-            <span style={{ marginLeft: '0.35rem', opacity: 0.9 }}>({Math.min(calibrationSamples.length, CALIBRATION_SAMPLE_COUNT)}/{CALIBRATION_SAMPLE_COUNT} samples)</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
-            <button type="button" onClick={beginCalibration}>{calibrationAxis === 'z' ? 'Mark 0.5 m Forward' : 'Calibrate Forward'}</button>
-            <button type="button" onClick={() => { setCalibrationAxis(null); setCalibrationStart(null); setCalibrationStartedAt(null); setMeasuredCalibrationDistance(0); setCalibrationSamples([]); calibrationTravelRef.current = 0; calibrationPreviousRef.current = null; }} style={{ gridColumn: '1 / -1' }}>Reset calibration</button>
-          </div>
-        </div>
-        <div style={{ marginTop: '0.45rem' }}>
-          <strong style={{ display: 'block', marginBottom: '0.25rem' }}>Accelerometer calibration</strong>
-          <div style={{ marginBottom: '0.35rem', fontSize: '0.72rem', opacity: 0.85 }}>
-            {motionCalibrating
-              ? 'Hold the device still for a moment while the app samples the resting bias.'
-              : 'Tap to calibrate accelerometer bias. Keep the device stationary on a flat surface.'}
-          </div>
-          <div style={{ marginBottom: '0.35rem', fontSize: '0.72rem', opacity: 0.85 }}>
-            Current bias: x {motionCalibration.xOffset.toFixed(2)} y {motionCalibration.yOffset.toFixed(2)} z {motionCalibration.zOffset.toFixed(2)}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
-            <button type="button" onClick={calibrateMotion} disabled={motionCalibrating}>{motionCalibrating ? 'Calibrating…' : 'Calibrate Accelerometer'}</button>
-            <button type="button" onClick={() => setMotionCalibration({ xOffset: 0, yOffset: 0, zOffset: 0 })} style={{ gridColumn: '1 / -1' }}>Reset accelerometer</button>
-          </div>
-        </div>
-        <div style={{ marginTop: '0.35rem' }}>
-          <button type="button" onClick={() => setDebugOpen((value) => !value)} style={{ marginRight: '0.35rem' }}>Toggle Debug</button>
-          <button type="button" onClick={() => setDebugWindowOpen(true)}>Open Debug Window</button>
-        </div>
-        {moveMode === 'buttons' && (
-          <div style={{ marginTop: '0.45rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
-            <div style={{ fontSize: '0.72rem', opacity: 0.8 }}>Virtual joystick</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-              <div
-                role="slider"
-                aria-label="Movement joystick"
-                style={{
-                  position: 'relative',
-                  width: '118px',
-                  height: '118px',
-                  borderRadius: '50%',
-                  border: '2px solid rgba(255,255,255,0.35)',
-                  background: 'rgba(255,255,255,0.08)',
-                  touchAction: 'none',
-                  boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)',
-                  cursor: 'grab',
-                  userSelect: 'none',
-                }}
-                onPointerDown={handleJoystickPointerDown}
-                onPointerMove={handleJoystickPointerMove}
-                onPointerUp={handleJoystickRelease}
-                onPointerCancel={handleJoystickRelease}
-              >
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '50%',
-                      background: 'rgba(56, 189, 248, 0.9)',
-                      boxShadow: '0 0 0 3px rgba(255,255,255,0.12)',
-                      transform: `translate(${joystick.x * 28}px, ${joystick.y * 28}px)`,
-                      transition: joystick.active ? 'none' : 'transform 140ms ease-out',
-                    }}
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <button
-                  type="button"
-                  style={{ width: '44px', height: '44px', touchAction: 'none' }}
-                  onPointerDown={() => setButtonState((value) => ({ ...value, up: true }))}
-                  onPointerUp={() => setButtonState((value) => ({ ...value, up: false }))}
-                  onPointerLeave={() => setButtonState((value) => ({ ...value, up: false }))}
-                  onPointerCancel={() => setButtonState((value) => ({ ...value, up: false }))}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  style={{ width: '44px', height: '44px', touchAction: 'none' }}
-                  onPointerDown={() => setButtonState((value) => ({ ...value, down: true }))}
-                  onPointerUp={() => setButtonState((value) => ({ ...value, down: false }))}
-                  onPointerLeave={() => setButtonState((value) => ({ ...value, down: false }))}
-                  onPointerCancel={() => setButtonState((value) => ({ ...value, down: false }))}
-                >
-                  ↓
-                </button>
-              </div>
-            </div>
-            <div style={{ fontSize: '0.68rem', opacity: 0.75 }}>Drag to move sideways and forward; use the arrows for height</div>
-          </div>
-        )}
-      </div>
+        calibrate={calibrate}
+        calibrateMotion={calibrateMotion}
+        resetMotionCalibration={resetMotionCalibration}
+      />
 
       {debugOpen && (
         <div
