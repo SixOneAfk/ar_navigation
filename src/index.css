@@ -1,0 +1,428 @@
+:root {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #1a1f2e;
+  background-color: #eef2f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.app-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.camera-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  background: #0f1724;
+}
+
+.ar-canvas {
+  position: absolute !important;
+  inset: 0;
+  z-index: 1;
+}
+
+.camera-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 20;
+  width: min(360px, calc(100% - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ced8e6;
+  backdrop-filter: blur(6px);
+}
+
+.camera-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.camera-panel__text {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  color: #3a475d;
+}
+
+.camera-panel__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.camera-panel__btn {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  background: #0e57cc;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.camera-panel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.camera-panel__btn--secondary {
+  background: #e4eaf3;
+  color: #23324a;
+}
+
+.camera-panel__status {
+  margin: 0.7rem 0 0;
+  font-size: 0.84rem;
+  color: #1f2f47;
+}
+
+.camera-panel__status[data-state='denied'],
+.camera-panel__status[data-state='error'],
+.camera-panel__status[data-state='unsupported'] {
+  color: #a01616;
+}
+
+@media (max-width: 640px) {
+  .camera-panel {
+    top: auto;
+    bottom: 1rem;
+  }
+}
+
+/* ── Gyroscope panel ─────────────────────────────────────────── */
+.gyro-panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 20;
+  width: min(300px, calc(100% - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ced8e6;
+  backdrop-filter: blur(6px);
+}
+
+.gyro-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.gyro-panel__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.gyro-panel__btn {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  background: #0e57cc;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gyro-panel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gyro-panel__btn--secondary {
+  background: #e4eaf3;
+  color: #23324a;
+}
+
+.gyro-panel__status {
+  margin: 0.7rem 0 0;
+  font-size: 0.84rem;
+  color: #1f2f47;
+}
+
+.gyro-panel__status[data-state='denied'],
+.gyro-panel__status[data-state='unsupported'] {
+  color: #a01616;
+}
+
+.gyro-panel__status[data-state='granted'] {
+  color: #0a6f28;
+}
+
+@media (max-width: 640px) {
+  .gyro-panel {
+    top: auto;
+    bottom: 12rem; /* sits above camera panel on mobile */
+    right: 1rem;
+    left: 1rem;
+    width: auto;
+  }
+}
+
+/* ── Collapsible sidebar UI ────────────────────────────────── */
+.sidebar__toggle {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.28rem;
+  width: 3rem;
+  height: 3rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.9);
+  color: #f8fafc;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+}
+
+.sidebar__toggle span {
+  display: block;
+  width: 1.15rem;
+  height: 2px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sidebar__toggle--active {
+  background: rgba(15, 23, 42, 0.95);
+}
+
+.sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 25;
+  width: min(360px, calc(100vw - 1.25rem));
+  height: 100%;
+  padding: 1rem 1rem 1rem;
+  padding-top: 4.6rem;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.97) 0%, rgba(15, 23, 42, 0.95) 100%);
+  color: #f8fafc;
+  box-shadow: 18px 0 42px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(16px);
+  transform: translateX(-102%);
+  transition: transform 220ms ease;
+  overflow-y: auto;
+}
+
+.sidebar--open {
+  transform: translateX(0);
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 0.25rem 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.sidebar__eyebrow {
+  margin: 0 0 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+.sidebar__heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sidebar__pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #082f49;
+  background: linear-gradient(135deg, #7dd3fc, #38bdf8);
+}
+
+.sidebar__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.9rem;
+}
+
+.sidebar__panel {
+  padding: 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.sidebar__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+}
+
+.sidebar__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.sidebar__meta,
+.sidebar__hint,
+.sidebar__status {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+}
+
+.sidebar__actions,
+.sidebar__button-grid {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.sidebar__button-grid--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sidebar__btn {
+  border: none;
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  background: linear-gradient(135deg, #2563eb, #0f766e);
+  color: #f8fafc;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+}
+
+.sidebar__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sidebar__btn--secondary {
+  background: linear-gradient(135deg, #334155, #475569);
+  box-shadow: none;
+}
+
+.sidebar__control {
+  margin-top: 0.65rem;
+}
+
+.sidebar__label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.sidebar__control input[type='range'] {
+  width: 100%;
+  accent-color: #38bdf8;
+}
+
+.sidebar__hint-pill {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.16);
+}
+
+.sidebar__joystick-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.sidebar__joystick {
+  position: relative;
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.21);
+  background: rgba(255, 255, 255, 0.08);
+  touch-action: none;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+  cursor: grab;
+  user-select: none;
+}
+
+.sidebar__joystick-knob {
+  position: absolute;
+  inset: 0;
+  width: 44px;
+  height: 44px;
+  margin: auto;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.12);
+  transition: transform 140ms ease-out;
+}
+
+.sidebar__joystick-arrows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sidebar__joystick-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+  cursor: pointer;
+  touch-action: none;
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    width: min(100vw - 1rem, 360px);
+  }
+
+  .sidebar__button-grid--compact {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar__joystick-row {
+    flex-direction: column;
+  }
+}
