@@ -36,7 +36,7 @@ npm run start:dev:all
 
 That starts:
 
-- Client UI on `http://localhost:5173`
+- Client UI on `https://localhost:5173`
 - Gateway on `http://localhost:3000`
 - Core backend on `http://localhost:3001`
 
@@ -48,13 +48,28 @@ source .venv/bin/activate
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Optional environment variables:
+
+- `CV_SERVICE_URL` for gateway -> CV forwarding (default `http://localhost:8000`)
+- `CORE_BACKEND_URL` for gateway -> route API forwarding (default `http://localhost:3001`)
+
 ## Open the app
 
 Open the client in your browser:
 
-- `http://localhost:5173`
+- `https://localhost:5173`
+
+For phone testing through a single public entry point:
+
+```bash
+ngrok http https://localhost:5173
+```
+
+Use the ngrok HTTPS URL on the phone. In dev mode, the frontend now proxies same-origin `/api/*` requests to the gateway on `http://localhost:3000`, so the phone only needs one public URL.
 
 ## Optional notes
 
 - The client expects a model at `apps/client/public/model.glb` if you want the 3D corridor model.
 - If you only want to demo the web UI, `npm run start:dev:all` is usually enough.
+- Route query API through gateway: `POST /api/v1/position/route` from the frontend, or `POST http://localhost:3000/api/v1/position/route` directly, with `{ "startNode": "N101", "targetNode": "N201" }`.
+- OCR recalibration API through gateway: `POST /api/v1/cv/scan` from the frontend, or `POST http://localhost:3000/api/v1/cv/scan` directly, with task payload contract fields (`session_id`, `timestamp`, `estimated_position`, `image_payload`).

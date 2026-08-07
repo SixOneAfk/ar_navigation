@@ -1,0 +1,88 @@
+Branch movement logic comparison
+Generated: 2026-08-07
+Repo: git@github.com:SixOneAfk/ar_navigation.git
+Compared branches: main vs Edgars
+
+Summary
+- The movement/gyro implementation that works on Edgars is not present on main.
+- In this repo state, main has no matching frontend movement files under src for this feature.
+- Core files are added on Edgars and must be ported to main.
+
+High-level reason it works on Edgars but not on main
+- Edgars includes a complete sensor + movement pipeline (permission handling, motion capture, walk mode movement, and UI controls).
+- main does not include these files/paths yet, so the walk-forward behavior cannot run there.
+
+Files that differ (main..Edgars)
+- A src/App.tsx
+- A src/components/CameraPermissionPanel.tsx
+- A src/components/GyroCamera.tsx
+- A src/hooks/useGyroscope.ts
+
+Key logic to port
+
+1) Motion and orientation data hook
+File: src/hooks/useGyroscope.ts
+- Adds permission flow for DeviceOrientationEvent and DeviceMotionEvent.
+- Captures raw acceleration and stores calibrated values in motionRef.
+- Exposes:
+  - state
+  - orientationRef
+  - motionRef
+  - calibration, motionCalibration, motionCalibrating
+  - calibrate(), calibrateMotion(), resetMotionCalibration(), requestPermission(), stop()
+
+2) Camera movement controller
+File: src/components/GyroCamera.tsx
+- Applies yaw (alpha) to camera rotation each frame.
+- Computes forward and strafe vectors from camera orientation.
+- Movement modes:
+  - gyro: rotation only (tilt movement disabled)
+  - buttons: explicit button-based translation
+  - walk: step-like forward movement from motion z acceleration
+- Walk logic details:
+  - reads motion.z
+  - low-pass filter (alpha ~ 0.16)
+  - thresholding (abs(filteredZ) > 0.12)
+  - integrates to walkVelocity with damping
+  - computes moveAmount from velocity, dt, sensitivity, walkSpeed
+  - applies forward translation with camera.position.addScaledVector(moveDirection, moveAmount)
+
+3) App wiring and controls
+File: src/App.tsx
+- Integrates useGyroscope + GyroCamera.
+- Adds moveMode state: off | gyro | buttons | walk.
+- Adds walk controls and calibration UI.
+- Passes motionRef, moveMode, walkSpeed, buttonState into GyroCamera.
+- Uses onPoseChange for tracking/calibration feedback.
+
+4) Permission UX (camera panel)
+File: src/components/CameraPermissionPanel.tsx
+- Requests camera and starts video preview.
+- Permission panel hides after cameraState becomes granted.
+
+Recommended port order to main
+1. Add src/hooks/useGyroscope.ts.
+2. Add src/components/GyroCamera.tsx.
+3. Port App integration in src/App.tsx:
+   - useGyroscope wiring
+   - moveMode + controls
+   - GyroCamera usage and props
+4. Add src/components/CameraPermissionPanel.tsx.
+5. Ensure style classes used by panels exist in src/index.css.
+6. Build and run, then verify permissions + walk mode on a mobile device.
+
+Verification checklist on main after port
+- Camera permission prompt appears, and panel disappears after grant.
+- Motion/gyro permission prompt appears and can be granted.
+- Walk Forward mode causes forward movement when device moves/steps.
+- Reset accelerometer and calibrate motion affect drift/noise as expected.
+- No TypeScript errors in App, GyroCamera, useGyroscope, CameraPermissionPanel.
+
+Useful comparison commands
+- git diff --name-status main..Edgars -- src/App.tsx src/components/GyroCamera.tsx src/hooks/useGyroscope.ts src/components/CameraPermissionPanel.tsx
+- git diff main..Edgars -- src/components/GyroCamera.tsx
+- git diff main..Edgars -- src/hooks/useGyroscope.ts
+- git diff main..Edgars -- src/App.tsx
+
+Notes
+- Local working tree on Edgars contains small follow-up fixes (e.g., resetMotionCalibration usage and camera panel hide behavior). Include these while porting to avoid regressions.

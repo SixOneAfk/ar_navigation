@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 
 type CameraState = 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported' | 'insecure' | 'error';
 
-export function CameraPermissionPanel() {
+type CameraPermissionPanelProps = {
+  isOpen: boolean;
+  onClose: () => void;
+};
+
+export function CameraPermissionPanel({ isOpen, onClose }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -81,8 +86,17 @@ export function CameraPermissionPanel() {
         playsInline
       />
 
-      <section className="camera-panel" style={cameraState === 'granted' ? { display: 'none' } : undefined}>
+      {isOpen && (
+        <section className="camera-panel">
         <h2 className="camera-panel__title">Camera Access</h2>
+        <button
+          type="button"
+          className="panel-close-btn"
+          onClick={onClose}
+          aria-label="Close camera panel"
+        >
+          Close
+        </button>
         <p className="camera-panel__text">
           Enable camera to place 3-D content over the live video feed.
         </p>
@@ -116,7 +130,8 @@ export function CameraPermissionPanel() {
           {cameraState === 'insecure' && 'Camera requires HTTPS or localhost. Open the app from a secure origin.'}
           {cameraState === 'error' && `Camera error: ${errorMessage}`}
         </p>
-      </section>
+        </section>
+      )}
     </>
   );
 }

@@ -1,0 +1,7 @@
+# NAV_AR Execution Rules for Roo Code
+
+1. **Context Adherence:** Always consult `AGENTS.md` before making architectural decisions or writing code.
+2. **Payload Compliance:** Strictly follow the JSON Payload Contract when connecting PWA endpoints with the OCR microservice.
+3. **Quality & Tests:** Always create unit tests (`pytest` for Python, `jest`/`vitest` for JS/TS) for any newly created module or function.
+4. **Documentation:** Automatically update module docstrings and corresponding `.md` documentation whenever code logic changes.
+5. **Budget & Tech Restrictions:** Do NOT introduce heavy external cloud dependencies or native app wrappers. Stay within the TSI Grant €1,200 constraints.

@@ -15,6 +15,13 @@ export type AccelSample = {
 
 const ZERO_VEC: Vec3 = { x: 0, y: 0, z: 0 };
 
+export type AccelConfig = {
+  stepThreshold?: number;
+  stepDebounceMs?: number;
+  rawDeadband?: number;
+  gravityLpAlpha?: number;
+};
+
 function sanitize(value: number | null | undefined) {
   return Number.isFinite(value) ? (value as number) : 0;
 }
@@ -23,7 +30,14 @@ function withDeadband(value: number, threshold = 0.12) {
   return Math.abs(value) < threshold ? 0 : value;
 }
 
-export function useAcceleration() {
+export function useAcceleration(config: AccelConfig = {}) {
+  const {
+    stepThreshold = 1.15,
+    stepDebounceMs = 350,
+    rawDeadband = 0.12,
+    gravityLpAlpha = 0.08,
+  } = config;
+
   const [state, setState] = useState<AccelState>('idle');
   const [sample, setSample] = useState<AccelSample>({
     intervalMs: 0,
@@ -41,10 +55,26 @@ export function useAcceleration() {
   const gravityMagnitudeRef = useRef(9.81);
   const velocityRef = useRef<Vec3>({ ...ZERO_VEC });
   const positionRef = useRef<Vec3>({ ...ZERO_VEC });
+  const stepThresholdRef = useRef(stepThreshold);
+  const stepDebounceMsRef = useRef(stepDebounceMs);
+  const rawDeadbandRef = useRef(rawDeadband);
+  const gravityLpAlphaRef = useRef(gravityLpAlpha);
 
-  const STEP_THRESHOLD = 1.15;
-  const STEP_DEBOUNCE_MS = 350;
-  const GRAVITY_LP_ALPHA = 0.08;
+  useEffect(() => {
+    stepThresholdRef.current = Math.max(0, stepThreshold);
+  }, [stepThreshold]);
+
+  useEffect(() => {
+    stepDebounceMsRef.current = Math.max(0, stepDebounceMs);
+  }, [stepDebounceMs]);
+
+  useEffect(() => {
+    rawDeadbandRef.current = Math.max(0, rawDeadband);
+  }, [rawDeadband]);
+
+  useEffect(() => {
+    gravityLpAlphaRef.current = Math.min(1, Math.max(0.001, gravityLpAlpha));
+  }, [gravityLpAlpha]);
 
   useEffect(() => {
     return () => {
@@ -60,11 +90,15 @@ export function useAcceleration() {
       const fallbackInterval = lastEventAtRef.current == null ? 0.016 : (now - lastEventAtRef.current) / 1000;
       lastEventAtRef.current = now;
       const intervalSec = Math.max((event.interval || 16) / 1000, fallbackInterval, 0.01);
+      const deadband = rawDeadbandRef.current;
+      const gravityAlpha = gravityLpAlphaRef.current;
+      const threshold = stepThresholdRef.current;
+      const debounceMs = stepDebounceMsRef.current;
 
       const raw = {
-        x: withDeadband(sanitize(event.acceleration?.x)),
-        y: withDeadband(sanitize(event.acceleration?.y)),
-        z: withDeadband(sanitize(event.acceleration?.z)),
+        x: withDeadband(sanitize(event.acceleration?.x), deadband),
+        y: withDeadband(sanitize(event.acceleration?.y), deadband),
+        z: withDeadband(sanitize(event.acceleration?.z), deadband),
       };
       const withGravity = {
         x: sanitize(event.accelerationIncludingGravity?.x),
@@ -78,15 +112,15 @@ export function useAcceleration() {
       );
 
       gravityMagnitudeRef.current =
-        gravityMagnitudeRef.current * (1 - GRAVITY_LP_ALPHA) +
-        gravityMagnitude * GRAVITY_LP_ALPHA;
+        gravityMagnitudeRef.current * (1 - gravityAlpha) +
+        gravityMagnitude * gravityAlpha;
 
       // High-pass the acceleration magnitude: this isolates vertical walking oscillation.
       const verticalAcceleration = gravityMagnitude - gravityMagnitudeRef.current;
       const verticalAmplitude = Math.abs(verticalAcceleration);
       const msSinceLastStep = now - lastStepAtRef.current;
 
-      if (verticalAmplitude > STEP_THRESHOLD && msSinceLastStep >= STEP_DEBOUNCE_MS) {
+      if (verticalAmplitude > threshold && msSinceLastStep >= debounceMs) {
         lastStepAtRef.current = now;
         setStepCount((prev) => prev + 1);
       }

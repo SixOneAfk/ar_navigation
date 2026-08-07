@@ -23,6 +23,34 @@ body,
   overflow: hidden;
 }
 
+.control-dock {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 25;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  max-width: calc(100% - 2rem);
+}
+
+.control-dock__btn {
+  border: 1px solid rgba(205, 216, 233, 0.9);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1f2f47;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.control-dock__btn[data-active='true'] {
+  background: #0e57cc;
+  color: #fff;
+  border-color: #0e57cc;
+}
+
 .camera-bg {
   position: absolute;
   inset: 0;
@@ -41,7 +69,7 @@ body,
 
 .camera-panel {
   position: absolute;
-  top: 1rem;
+  top: 4.5rem;
   left: 1rem;
   z-index: 20;
   width: min(360px, calc(100% - 2rem));
@@ -50,6 +78,18 @@ body,
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid #ced8e6;
   backdrop-filter: blur(6px);
+}
+
+.panel-close-btn {
+  position: absolute;
+  top: 0.8rem;
+  right: 0.8rem;
+  border: none;
+  background: transparent;
+  color: #50627d;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .camera-panel__title {
@@ -106,13 +146,18 @@ body,
     top: auto;
     bottom: 1rem;
   }
+
+  .control-dock {
+    top: auto;
+    bottom: 1rem;
+  }
 }
 
 /* ── Gyroscope panel ─────────────────────────────────────────── */
 .gyro-panel {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 4.5rem;
+  left: 1rem;
   z-index: 20;
   width: min(300px, calc(100% - 2rem));
   padding: 1rem;
@@ -171,8 +216,8 @@ body,
 /* ── Acceleration panel ─────────────────────────────────────── */
 .accel-panel {
   position: absolute;
-  top: 11rem;
-  right: 1rem;
+  top: 4.5rem;
+  left: 1rem;
   z-index: 20;
   width: min(320px, calc(100% - 2rem));
   padding: 1rem;
@@ -245,20 +290,73 @@ body,
   color: #0a6f28;
 }
 
+.calibration-panel {
+  position: absolute;
+  top: 4.5rem;
+  left: 1rem;
+  z-index: 20;
+  width: min(360px, calc(100% - 2rem));
+  padding: 1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ced8e6;
+  backdrop-filter: blur(6px);
+}
+
+.calibration-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.calibration-panel__text {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.84rem;
+  color: #33445f;
+}
+
+.calibration-control {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  font-size: 0.84rem;
+  color: #20324c;
+}
+
+.calibration-control input[type='range'] {
+  width: 100%;
+}
+
+.calibration-panel__btn {
+  margin-top: 0.8rem;
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  background: #0e57cc;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media (max-width: 640px) {
   .gyro-panel {
     top: auto;
-    bottom: 12rem; /* sits above camera panel on mobile */
-    right: 1rem;
+    bottom: 4.5rem;
     left: 1rem;
     width: auto;
   }
 
   .accel-panel {
     top: auto;
-    bottom: 21rem;
-    right: 1rem;
+    bottom: 4.5rem;
     left: 1rem;
+    width: auto;
+  }
+
+  .calibration-panel {
+    top: auto;
+    bottom: 4.5rem;
+    left: 1rem;
+    right: 1rem;
     width: auto;
   }
 }

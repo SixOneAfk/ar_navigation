@@ -47,12 +47,17 @@ export function GyroCamera({
     targetNavPositionRef.current.set(base.x, base.y, base.z);
     lastStepCountRef.current = stepCount;
     camera.position.set(base.x, base.y, base.z);
-  }, [basePosition, camera, stepCount]);
+  }, [basePosition, camera]);
 
   useFrame(() => {
     if (!movementEnabled) {
       lastStepCountRef.current = stepCount;
       return;
+    }
+
+    // If the counter is reset in UI/hook, sync to avoid blocking future steps.
+    if (stepCount < lastStepCountRef.current) {
+      lastStepCountRef.current = stepCount;
     }
 
     if (stepCount > lastStepCountRef.current) {

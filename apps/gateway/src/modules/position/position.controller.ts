@@ -2,10 +2,46 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { PositionTelemetryDto } from './dto/position-telemetry.dto';
 import { PositioningGrpcClient } from './grpc/positioning-grpc.client';
 
+type RouteRequestDto = {
+  startNode: string;
+  targetNode: string;
+};
+
 @Controller('api/v1/position')
 export class PositionController {
+  private readonly coreBackendBaseUrl = process.env.CORE_BACKEND_URL ?? 'http://localhost:3001';
+
   constructor(private readonly positioningGrpcClient: PositioningGrpcClient) {
     console.log('[GATEWAY:PositionController] Initialized with PositioningGrpcClient');
+  }
+
+  @Post('route')
+  async getRoute(@Body() dto: RouteRequestDto) {
+    console.log('[GATEWAY:PositionController] POST /route called with payload:', dto);
+
+    if (!dto?.startNode || !dto?.targetNode) {
+      throw new Error('startNode and targetNode are required');
+    }
+
+    const endpoint = `${this.coreBackendBaseUrl}/api/v1/route`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dto),
+    });
+
+    if (!response.ok) {
+      const bodyText = await response.text();
+      throw new Error(`Core backend route request failed: HTTP ${response.status} ${bodyText}`);
+    }
+
+    const route = (await response.json()) as Record<string, unknown>;
+    return {
+      status: 'accepted',
+      source: 'route-forwarder',
+      receivedAt: new Date().toISOString(),
+      route,
+    };
   }
 
   @Post('telemetry')
