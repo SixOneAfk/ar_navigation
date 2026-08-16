@@ -14,6 +14,10 @@ describe('useGyroscope', () => {
       writable: true,
       value: ResizeObserverMock,
     });
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: true,
+    });
     Object.defineProperty(window, 'DeviceOrientationEvent', {
       writable: true,
       value: class MockOrientationEvent {} as unknown as typeof DeviceOrientationEvent,
