@@ -47,3 +47,5 @@ The client looks for a 3D corridor model at `apps/client/public/model.glb`.
 - Gateway CV scan forwarding: `POST /api/v1/cv/scan`
 - Core route API: `POST /api/v1/route`
 - CV recalibration API: `POST /api/v1/recalibrate`
+
+When camera access is enabled, the client sends a 640x480 JPEG frame through the Gateway about once per second. The FastAPI service performs OCR landmark matching and returns the matched graph node when known signage is detected.

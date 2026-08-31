@@ -61,6 +61,10 @@ body,
   background: #0f1724;
 }
 
+.camera-capture {
+  display: none;
+}
+
 .ar-canvas {
   position: absolute !important;
   inset: 0;
@@ -73,6 +77,8 @@ body,
   left: 1rem;
   z-index: 20;
   width: min(360px, calc(100% - 2rem));
+  max-height: calc(100% - 5.5rem);
+  overflow-y: auto;
   padding: 1rem;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
@@ -107,6 +113,18 @@ body,
   margin-top: 0.75rem;
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.camera-panel__file-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.camera-panel__file-input {
+  display: none;
 }
 
 .camera-panel__btn {
@@ -129,6 +147,10 @@ body,
   color: #23324a;
 }
 
+.camera-panel__btn--demo {
+  background: #0a7a4b;
+}
+
 .camera-panel__status {
   margin: 0.7rem 0 0;
   font-size: 0.84rem;
@@ -141,10 +163,127 @@ body,
   color: #a01616;
 }
 
+.camera-panel__status[data-state='unavailable'] {
+  color: #9a5b00;
+}
+
+.camera-panel__scan {
+  margin-top: 0.75rem;
+  padding: 0.65rem;
+  border-radius: 10px;
+  background: rgba(232, 238, 249, 0.85);
+}
+
+.camera-panel__preview {
+  margin: 0 0 0.65rem;
+}
+
+.camera-panel__preview img {
+  display: block;
+  width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #ced8e6;
+}
+
+.camera-panel__preview figcaption {
+  margin-top: 0.3rem;
+  overflow: hidden;
+  color: #50627d;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-panel__scan-status,
+.camera-panel__scan-count {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.camera-panel__result {
+  margin-top: 0.65rem;
+}
+
+.camera-panel__confidence-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: #20324c;
+  font-size: 0.78rem;
+}
+
+.camera-panel__confidence-label strong {
+  color: #0a6f28;
+  font-size: 1rem;
+}
+
+.camera-panel__confidence-track {
+  height: 9px;
+  margin-top: 0.3rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #cfd8e6;
+}
+
+.camera-panel__confidence-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1ba36a, #73d13d);
+  transition: width 180ms ease;
+}
+
+.camera-panel__result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0.65rem 0 0;
+}
+
+.camera-panel__result-grid div {
+  min-width: 0;
+  padding: 0.4rem;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.camera-panel__result-grid dt {
+  color: #66758d;
+  font-size: 0.7rem;
+}
+
+.camera-panel__result-grid dd {
+  margin: 0.15rem 0 0;
+  overflow: hidden;
+  color: #15263f;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-panel__scan-status[data-state='success'] {
+  color: #0a6f28;
+}
+
+.camera-panel__scan-status[data-state='error'] {
+  color: #a01616;
+}
+
+.camera-panel__scan-count {
+  margin-top: 0.35rem;
+  color: #50627d;
+}
+
 @media (max-width: 640px) {
   .camera-panel {
     top: auto;
-    bottom: 1rem;
+    bottom: 4.5rem;
+    max-height: calc(100% - 6.5rem);
   }
 
   .control-dock {
@@ -262,7 +401,9 @@ body,
   margin-top: 0.75rem;
   display: grid;
   gap: 0.35rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
   font-size: 0.78rem;
 }
 

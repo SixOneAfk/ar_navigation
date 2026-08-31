@@ -1,6 +1,7 @@
 import base64
+from functools import lru_cache
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
@@ -69,6 +70,14 @@ class RecalibrateResponse(BaseModel):
     candidate_count: int
 
 
+@lru_cache(maxsize=1)
+def _get_easyocr_reader() -> Any | None:
+    if easyocr is None:
+        return None
+
+    return easyocr.Reader(["en"], gpu=False)
+
+
 def _decode_image(payload: str) -> np.ndarray:
     if cv2 is None:
         raise HTTPException(status_code=500, detail="opencv is not installed")
@@ -107,8 +116,8 @@ def _preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
 def _ocr_candidates(processed: np.ndarray) -> list[tuple[str, float]]:
     candidates: list[tuple[str, float]] = []
 
-    if easyocr is not None:
-        reader = easyocr.Reader(["en"], gpu=False)
+    reader = _get_easyocr_reader()
+    if reader is not None:
         for _bbox, text, conf in reader.readtext(processed):
             candidates.append((text, float(conf)))
         if candidates:
@@ -137,16 +146,23 @@ def _normalize_text(text: str) -> str:
 
 
 def _score_match(candidate: str, known: str) -> float:
+    if not candidate or not known:
+        return 0.0
     if candidate == known:
         return 1.0
-    shorter = min(len(candidate), len(known))
-    if shorter == 0:
-        return 0.0
-    shared = 0
-    for index in range(shorter):
-        if candidate[index] == known[index]:
-            shared += 1
-    return shared / max(len(candidate), len(known))
+
+    previous_row = list(range(len(known) + 1))
+    for candidate_index, candidate_char in enumerate(candidate, start=1):
+        current_row = [candidate_index]
+        for known_index, known_char in enumerate(known, start=1):
+            insertion = current_row[known_index - 1] + 1
+            deletion = previous_row[known_index] + 1
+            substitution = previous_row[known_index - 1] + (candidate_char != known_char)
+            current_row.append(min(insertion, deletion, substitution))
+        previous_row = current_row
+
+    distance = previous_row[-1]
+    return 1.0 - distance / max(len(candidate), len(known))
 
 
 def _match_node(candidates: list[tuple[str, float]]) -> tuple[Optional[str], Optional[str], float]:
