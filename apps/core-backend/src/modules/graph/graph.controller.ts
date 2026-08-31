@@ -13,7 +13,7 @@ export class GraphController {
   }
 
   @Post('route')
-  computeRoute(@Body() payload: RouteRequestDto) {
+  async computeRoute(@Body() payload: RouteRequestDto) {
     console.log('[CORE-BACKEND:GraphController] POST /api/v1/route called with:', {
       startNode: payload?.startNode,
       targetNode: payload?.targetNode,

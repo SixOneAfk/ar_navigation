@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum EdgeType {
+  corridor
+  stairs
+  elevator
+}
+
+model GraphNode {
+  id            String      @id
+  x             Float
+  y             Float
+  floor         Int
+  tag           String?
+  outgoingEdges GraphEdge[] @relation("EdgeFrom")
+  incomingEdges GraphEdge[] @relation("EdgeTo")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model GraphEdge {
+  id        String   @id @default(cuid())
+  from      String
+  to        String
+  edgeType  EdgeType
+  fromNode  GraphNode @relation("EdgeFrom", fields: [from], references: [id], onDelete: Cascade)
+  toNode    GraphNode @relation("EdgeTo", fields: [to], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([from])
+  @@index([to])
+  @@unique([from, to, edgeType])
+}

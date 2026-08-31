@@ -1,59 +1,21 @@
 import { Injectable } from '@nestjs/common';
-
-type GraphNode = {
-  id: string;
-  x: number;
-  y: number;
-  floor: number;
-  tag?: string;
-};
-
-type GraphEdge = {
-  from: string;
-  to: string;
-  edgeType: 'corridor' | 'stairs' | 'elevator';
-};
-
-type PathNodeDetail = GraphNode;
-
-type PathResponse = {
-  path: string[];
-  totalDistance: number;
-  nodesDetail: PathNodeDetail[];
-};
-
-type Neighbor = {
-  to: string;
-  weight: number;
-};
-
-const FLOOR_HEIGHT_METERS = 4.0;
-const FLOOR_CHANGE_PENALTY = 8.0;
-
-const DEFAULT_NODES: GraphNode[] = [
-  { id: 'N101', x: 0.0, y: 0.0, floor: 1, tag: 'ROOM_101' },
-  { id: 'N102', x: 12.5, y: 0.0, floor: 1, tag: 'HALLWAY_CORNER_1' },
-  { id: 'N103', x: 12.5, y: 15.0, floor: 1, tag: 'ROOM_102' },
-  { id: 'N104', x: 12.5, y: 15.0, floor: 2, tag: 'STAIRWELL_FL2' },
-  { id: 'N201', x: 0.0, y: 15.0, floor: 2, tag: 'ROOM_201' },
-];
-
-const DEFAULT_EDGES: GraphEdge[] = [
-  { from: 'N101', to: 'N102', edgeType: 'corridor' },
-  { from: 'N102', to: 'N103', edgeType: 'corridor' },
-  { from: 'N103', to: 'N104', edgeType: 'stairs' },
-  { from: 'N104', to: 'N201', edgeType: 'corridor' },
-];
+import { DatabaseService } from '../database/database.service';
+import {
+  FLOOR_CHANGE_PENALTY,
+  FLOOR_HEIGHT_METERS,
+  GraphEdge,
+  GraphNode,
+  Neighbor,
+  PathResponse,
+} from './graph.types';
 
 @Injectable()
 export class GraphService {
-  private readonly nodeIndex: Map<string, GraphNode>;
-  private readonly adjacency: Map<string, Neighbor[]>;
+  private nodeIndex = new Map<string, GraphNode>();
+  private adjacency = new Map<string, Neighbor[]>();
 
-  constructor() {
+  constructor(private readonly databaseService: DatabaseService) {
     console.log('[CORE-BACKEND:GraphService] Initialized');
-    this.nodeIndex = this.createNodeIndex(DEFAULT_NODES);
-    this.adjacency = this.createAdjacencyList(DEFAULT_EDGES);
   }
 
   getGraphSchema(): { nodeSchema: Record<string, unknown>; edgeSchema: Record<string, unknown> } {
@@ -81,9 +43,11 @@ export class GraphService {
     };
   }
 
-  computeRoute(startNode: string, targetNode: string): PathResponse {
+  async computeRoute(startNode: string, targetNode: string): Promise<PathResponse> {
     console.log('[CORE-BACKEND:GraphService] computeRoute() called with:', { startNode, targetNode });
     try {
+      await this.loadGraphSnapshot();
+
       if (!this.nodeIndex.has(startNode) || !this.nodeIndex.has(targetNode)) {
         const missing = !this.nodeIndex.has(startNode) ? startNode : targetNode;
         throw new Error(`Node ${missing} not found in graph`);
@@ -114,6 +78,12 @@ export class GraphService {
       });
       throw error;
     }
+  }
+
+  private async loadGraphSnapshot(): Promise<void> {
+    const { nodes, edges } = await this.databaseService.getGraphData();
+    this.nodeIndex = this.createNodeIndex(nodes);
+    this.adjacency = this.createAdjacencyList(edges);
   }
 
   private createNodeIndex(nodes: GraphNode[]): Map<string, GraphNode> {

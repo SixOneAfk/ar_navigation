@@ -9,7 +9,7 @@ Use this if you want to hand the app to a friend and get it running fast.
 
 ## Install dependencies
 
-From the repo root, install each app separately:
+From the repo root, install Node dependencies:
 
 ```bash
 npm install --prefix apps/client
@@ -17,36 +17,54 @@ npm install --prefix apps/core-backend
 npm install --prefix apps/gateway
 ```
 
-For the Python service:
+Set up the Python CV service (one-time setup):
 
 ```bash
-cd apps/cv-service
-python -m venv .venv
-source .venv/bin/activate
-pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-cpu.txt
-pip install -r requirements.txt
+npm run setup:cv-service
 ```
 
 ## Launch the app
 
-The fastest way to start the web app and Nest services is from the repo root:
+### Option 1: Full stack with CV service (recommended)
+
+Start all services including the CV pipeline in one command:
+
+```bash
+npm run start:dev:all:with-cv
+```
+
+This starts:
+
+- Client UI on `https://localhost:5173`
+- Gateway on `http://localhost:3000`
+- Core backend on `http://localhost:3001`
+- CV service on `http://localhost:8000` (Swagger UI at `/docs`)
+
+### Option 2: Nest services only (without CV)
 
 ```bash
 npm run start:dev:all
 ```
 
-That starts:
+Starts Client, Gateway, and Core Backend. Useful if you don't need OCR/CV features.
 
-- Client UI on `https://localhost:5173`
-- Gateway on `http://localhost:3000`
-- Core backend on `http://localhost:3001`
+### Option 3: CV service alone
 
-To run the Python CV service in another terminal:
+```bash
+npm run start:cv
+```
+
+Starts only the Python FastAPI CV service on port 8000.
+
+### Test CV service
+
+From the repo root, run the test suite:
 
 ```bash
 cd apps/cv-service
 source .venv/bin/activate
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m pytest test_main.py -v
+cd ../..
 ```
 
 Optional environment variables:
