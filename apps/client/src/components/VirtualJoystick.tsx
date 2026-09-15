@@ -5,6 +5,28 @@ export type JoystickValue = {
   y: number;
 };
 
+/**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - Directional manual buttons were replaced with a pointer-driven analog joystick.
+ *
+ * Why:
+ * - Mobile AR movement needs continuous input, while desktop testing still needs mouse input.
+ *
+ * Previous behavior:
+ * - The initial clone had no joystick or manual movement state.
+ *
+ * Current behavior:
+ * - X is left/right and Y is forward/backward, both in the range -1..1.
+ * - A deadzone and radial normalization prevent drift and faster diagonal movement.
+ * - Pointer capture keeps touch and mouse dragging active until release/cancel.
+ *
+ * Impact:
+ * - Feeds the existing buttons movement mode; gyro, walk, and off modes are unchanged.
+ * - Introduced by joystick functional (eba1e30).
+ */
+
 type VirtualJoystickProps = {
   value: JoystickValue;
   onChange: (value: JoystickValue) => void;

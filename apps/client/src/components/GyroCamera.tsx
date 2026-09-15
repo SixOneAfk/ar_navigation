@@ -13,6 +13,28 @@ const DEFAULT_WALK_CADENCE_HZ = 2;
 const MIN_WALK_SPEED_MPS = 0.6;
 const MAX_WALK_SPEED_MPS = 2.2;
 
+/**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - The original camera only applied DeviceOrientation rotation.
+ * - The current camera also translates using gyro tilt, joystick input, and detected steps.
+ *
+ * Why:
+ * - The original clone had no complete walking/manual movement pipeline.
+ *
+ * Previous behavior:
+ * - Orientation was converted to a smoothed quaternion; camera position was not driven by walking.
+ *
+ * Current behavior:
+ * - Direction comes from the camera's horizontal forward/right vectors.
+ * - Magnitude is expressed in meters and multiplied by frame delta.
+ *
+ * Impact:
+ * - Affects gyro, joystick, walking, sensitivity, camera height, and movement-mode behavior.
+ * - The physical-unit conversion was introduced in the Scale is good work (e72e704) and refined in 3e32350.
+ */
+
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
   motionRef: React.RefObject<MotionData>;

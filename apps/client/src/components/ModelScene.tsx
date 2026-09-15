@@ -9,6 +9,28 @@ type ModelSceneProps = {
 } & GroupProps;
 
 /**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - The original model loader normalized the GLB to an arbitrary scene size.
+ * - The current loader measures bounds for diagnostics and centering only.
+ *
+ * Why:
+ * - The building is the real-world reference for AR navigation.
+ *
+ * Previous behavior:
+ * - Bounding-box size was used to calculate a fixed fit scale.
+ *
+ * Current behavior:
+ * - The imported GLB scale is preserved: 1 Three.js unit equals 1 meter.
+ * - Bounding-box logs verify the exported dimensions without changing them.
+ *
+ * Impact:
+ * - Affects GLB scale, world anchors, camera placement, and movement calibration.
+ * - Introduced by Scale is good (e72e704).
+ */
+
+/**
  * Loads the corridor GLTF model at the scale exported by Blender.
  * The model is centered without changing its world dimensions.
  */

@@ -16,6 +16,28 @@ const DEFAULT_STEP_STRIDE_METERS = 0.65;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
 
+/**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - The original App only enabled orientation permission and camera rotation.
+ * - The current App owns movement modes, joystick state, motion permission, and step data.
+ *
+ * Why:
+ * - The AR client needed walking and manual navigation in addition to gyro rotation.
+ *
+ * Previous behavior:
+ * - Gyro permission controlled only camera orientation.
+ *
+ * Current behavior:
+ * - Sensor permission feeds gyro rotation and accelerometer step detection.
+ * - Movement remains camera-relative and the GLB is kept at world scale.
+ *
+ * Impact:
+ * - Affects movement modes, joystick movement, walking calibration, and camera position.
+ * - Introduced by the frontend movement work in 4a4507d and later client commits.
+ */
+
 export default function App() {
   const [openPanel, setOpenPanel] = useState<PanelId>(null);
   const [stepThreshold, setStepThreshold] = useState(DEFAULT_STEP_THRESHOLD);
@@ -47,6 +69,7 @@ export default function App() {
   const cameraActive = moveMode === 'buttons' || (gyroActive && moveMode !== 'off');
 
   const requestSensorPermission = async () => {
+    // Both listeners are requested from the same user gesture for mobile browsers.
     await Promise.all([requestPermission(), requestAccelPermission()]);
   };
 
