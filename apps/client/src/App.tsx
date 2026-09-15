@@ -3,9 +3,10 @@ import { OrbitControls } from '@react-three/drei';
 import { ModelScene } from './components/ModelScene';
 import { CameraPermissionPanel } from './components/CameraPermissionPanel';
 import { GyroCamera } from './components/GyroCamera';
+import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const DEFAULT_STEP_THRESHOLD = 1.15;
@@ -13,7 +14,6 @@ const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
 const DEFAULT_STEP_STRIDE_METERS = 0.65;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
-type ButtonState = { forward: boolean; backward: boolean; left: boolean; right: boolean; up: boolean; down: boolean };
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
 
 export default function App() {
@@ -23,14 +23,7 @@ export default function App() {
   const [rawDeadband, setRawDeadband] = useState(DEFAULT_RAW_DEADBAND);
   const [stepStrideMeters, setStepStrideMeters] = useState(DEFAULT_STEP_STRIDE_METERS);
   const [moveMode, setMoveMode] = useState<MoveMode>('walk');
-  const [buttonState, setButtonState] = useState<ButtonState>({
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    up: false,
-    down: false,
-  });
+  const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
 
   const accelConfig = useMemo(
     () => ({
@@ -52,6 +45,10 @@ export default function App() {
   } = useAcceleration(accelConfig);
   const gyroActive = gyroState === 'granted';
   const cameraActive = moveMode === 'buttons' || (gyroActive && moveMode !== 'off');
+
+  useEffect(() => {
+    setJoystick({ x: 0, y: 0 });
+  }, [moveMode]);
 
   const format = (value: number) => value.toFixed(3);
   const togglePanel = (panel: Exclude<PanelId, null>) => {
@@ -135,19 +132,15 @@ export default function App() {
           </div>
 
           {moveMode === 'buttons' && (
-            <div className="gyro-panel__actions" aria-label="Movement controls">
-              {(['forward', 'backward', 'left', 'right', 'up', 'down'] as const).map((direction) => (
-                <button
-                  key={direction}
-                  type="button"
-                  className="gyro-panel__btn"
-                  onPointerDown={() => setButtonState((current) => ({ ...current, [direction]: true }))}
-                  onPointerUp={() => setButtonState((current) => ({ ...current, [direction]: false }))}
-                  onPointerLeave={() => setButtonState((current) => ({ ...current, [direction]: false }))}
-                >
-                  {direction}
-                </button>
-              ))}
+            <div className="gyro-panel__joystick-area">
+              <VirtualJoystick
+                value={joystick}
+                onChange={setJoystick}
+                onRelease={() => setJoystick({ x: 0, y: 0 })}
+              />
+              <span className="gyro-panel__joystick-readout">
+                X {joystick.x.toFixed(2)} / Y {joystick.y.toFixed(2)}
+              </span>
             </div>
           )}
 
@@ -340,7 +333,7 @@ export default function App() {
           motionRef={motionRef}
           active={cameraActive}
           moveMode={moveMode}
-          buttonState={buttonState}
+          joystick={joystick}
           sensitivity={0.6}
           walkSpeed={1}
         />

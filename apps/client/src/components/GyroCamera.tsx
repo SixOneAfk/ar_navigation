@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { MotionData, Orientation } from '../hooks/useGyroscope';
+import type { JoystickValue } from './VirtualJoystick';
 import { createDebugLogger } from '../utils/debugLogger';
 
 type GyroCameraProps = {
@@ -9,7 +10,7 @@ type GyroCameraProps = {
   motionRef: React.RefObject<MotionData>;
   active: boolean;
   moveMode?: 'off' | 'gyro' | 'buttons' | 'walk';
-  buttonState?: { forward: boolean; backward: boolean; left: boolean; right: boolean; up: boolean; down: boolean };
+  joystick?: JoystickValue;
   sensitivity?: number;
   walkSpeed?: number;
   calibrationTarget?: { x: number; y: number; z: number };
@@ -25,7 +26,7 @@ export function GyroCamera({
   moveMode = 'off',
   sensitivity = 0.6,
   walkSpeed = 1,
-  buttonState,
+  joystick = { x: 0, y: 0 },
   calibrationTarget,
   calibrationMoveActive = false,
   onPoseChange,
@@ -41,6 +42,7 @@ export function GyroCamera({
   const walkVelocity = useRef(0);
   const calibrationVec = useRef(new THREE.Vector3());
   const baseAlphaRef = useRef<number | null>(null);
+  const lastJoystickLogAtRef = useRef(0);
 
   useEffect(() => {
     if (!active) {
@@ -98,16 +100,21 @@ export function GyroCamera({
     let strafeAmount = 0;
     let verticalAmount = 0;
 
+    if (moveMode === 'buttons') {
+      const now = performance.now();
+      if (now - lastJoystickLogAtRef.current >= 250) {
+        const magnitude = Math.min(1, Math.hypot(joystick.x, joystick.y));
+        logger.current.debug('GyroCamera', `Joystick X: ${joystick.x.toFixed(2)} Y: ${joystick.y.toFixed(2)} magnitude: ${magnitude.toFixed(2)} Movement mode: ${moveMode}`);
+        lastJoystickLogAtRef.current = now;
+      }
+    }
+
     if (moveMode === 'gyro') {
       moveAmount = gyroMoveAmount;
       strafeAmount = gyroStrafeAmount;
     } else if (moveMode === 'buttons') {
-      if (buttonState?.forward) moveAmount += 0.02;
-      if (buttonState?.backward) moveAmount -= 0.02;
-      if (buttonState?.left) strafeAmount -= 0.02;
-      if (buttonState?.right) strafeAmount += 0.02;
-      if (buttonState?.up) verticalAmount += 0.02;
-      if (buttonState?.down) verticalAmount -= 0.02;
+      moveAmount = joystick.y * 0.02 * sensitivity;
+      strafeAmount = joystick.x * 0.02 * sensitivity;
     } else if (moveMode === 'walk') {
       const rawZAcceleration = motion?.z ?? 0;
       const lowPassAlpha = 0.16;

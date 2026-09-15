@@ -48,4 +48,22 @@ describe('GyroCamera', () => {
 
     expect(camera.position.z).not.toBe(startZ);
   });
+
+  it('maps joystick up to camera-relative forward movement', () => {
+    const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
+    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
+    const startZ = camera.position.z;
+
+    render(
+      <GyroCamera
+        orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
+        active
+        moveMode="buttons"
+        joystick={{ x: 0, y: 1 }}
+      />,
+    );
+
+    expect(camera.position.z).toBeLessThan(startZ);
+  });
 });
