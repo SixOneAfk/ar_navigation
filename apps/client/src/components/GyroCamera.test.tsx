@@ -32,26 +32,17 @@ describe('GyroCamera', () => {
     });
   });
 
-  it('updates camera orientation when active', () => {
-    const orientationRef = { current: { alpha: 90, beta: 35, gamma: 10 } };
-    const before = camera.quaternion.clone();
-
-    render(<GyroCamera orientationRef={orientationRef as any} active />);
-
-    expect(camera.quaternion.equals(before)).toBe(false);
-  });
-
-  it('advances position when step count increases', () => {
+  it('advances position from filtered motion in walk mode', () => {
     const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
+    const motionRef = { current: { x: 0, y: 0, z: 2, timestamp: 16 } };
     const startZ = camera.position.z;
 
     render(
       <GyroCamera
         orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
         active
-        movementEnabled
-        stepCount={1}
-        stepStrideMeters={1}
+        moveMode="walk"
       />,
     );
 

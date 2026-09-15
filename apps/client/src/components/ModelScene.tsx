@@ -9,36 +9,43 @@ type ModelSceneProps = {
 } & GroupProps;
 
 /**
- * Loads and scales the corridor GLTF model so it fits neatly into the scene.
- * The model is centered and resized before being displayed.
+ * Loads the corridor GLTF model at the scale exported by Blender.
+ * The model is centered without changing its world dimensions.
  */
 function CorridorModel({ modelPath, ...props }: ModelSceneProps) {
   const gltf = useGLTF(modelPath);
   const scene = gltf.scene.clone();
 
-  // Measure the model bounds so we can normalize its size.
+  // Measure the imported bounds for diagnostics and centering only.
   const box = new THREE.Box3().setFromObject(scene);
   const size = new THREE.Vector3();
   box.getSize(size);
-  const maxDimension = Math.max(size.x, size.y, size.z) || 1;
-  const fitScale = 2.2 / maxDimension;
-
-  // Reposition the model so its origin sits at the center of the scene.
   const center = new THREE.Vector3();
   box.getCenter(center);
-  scene.position.set(-center.x, -center.y, -center.z);
-  scene.scale.setScalar(fitScale);
+  const modelPosition: [number, number, number] = [-center.x, -center.y, -center.z];
+
+  if (import.meta.env?.DEV) {
+    console.debug(
+      `GLB size: ${size.x.toFixed(2)}m x ${size.y.toFixed(2)}m x ${size.z.toFixed(2)}m`,
+      {
+        min: box.min.toArray(),
+        max: box.max.toArray(),
+        scale: scene.scale.toArray(),
+        position: modelPosition,
+      },
+    );
+  }
 
   return (
-    <group>
-      <group position={[0, 0, 0]} rotation={[0, 0, 0]}>
-        <primitive object={scene} {...props} />
+    <>
+      <group {...props}>
+        <primitive object={scene} position={modelPosition} />
       </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.02, 0]}>
         <circleGeometry args={[10, 64]} />
         <meshStandardMaterial color="#dfe5ee" />
       </mesh>
-    </group>
+    </>
   );
 }
 
