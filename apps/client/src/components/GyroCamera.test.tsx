@@ -32,17 +32,30 @@ describe('GyroCamera', () => {
     });
   });
 
-  it('advances position from filtered motion in walk mode', () => {
+  it('advances position from detected steps in walk mode', () => {
     const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
     const motionRef = { current: { x: 0, y: 0, z: 2, timestamp: 16 } };
     const startZ = camera.position.z;
 
-    render(
+    const view = render(
       <GyroCamera
         orientationRef={orientationRef as any}
         motionRef={motionRef as any}
         active
         moveMode="walk"
+        stepCount={0}
+        stepStrideMeters={0.65}
+      />,
+    );
+
+    view.rerender(
+      <GyroCamera
+        orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
+        active
+        moveMode="walk"
+        stepCount={1}
+        stepStrideMeters={0.65}
       />,
     );
 

@@ -46,6 +46,10 @@ export default function App() {
   const gyroActive = gyroState === 'granted';
   const cameraActive = moveMode === 'buttons' || (gyroActive && moveMode !== 'off');
 
+  const requestSensorPermission = async () => {
+    await Promise.all([requestPermission(), requestAccelPermission()]);
+  };
+
   useEffect(() => {
     setJoystick({ x: 0, y: 0 });
   }, [moveMode]);
@@ -110,7 +114,7 @@ export default function App() {
             <button
               type="button"
               className="gyro-panel__btn"
-              onClick={requestPermission}
+              onClick={requestSensorPermission}
               disabled={gyroState === 'requesting'}
             >
               {gyroState === 'requesting' ? 'Requesting…' : 'Enable Gyro'}
@@ -334,8 +338,9 @@ export default function App() {
           active={cameraActive}
           moveMode={moveMode}
           joystick={joystick}
-          sensitivity={0.6}
-          walkSpeed={1}
+          stepCount={stepCount}
+          stepStrideMeters={stepStrideMeters}
+          sensitivity={1}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}

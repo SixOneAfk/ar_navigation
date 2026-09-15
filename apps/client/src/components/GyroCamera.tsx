@@ -5,14 +5,24 @@ import type { MotionData, Orientation } from '../hooks/useGyroscope';
 import type { JoystickValue } from './VirtualJoystick';
 import { createDebugLogger } from '../utils/debugLogger';
 
+/** One Three.js world unit represents one real-world meter. */
+export const DEFAULT_MOVEMENT_SPEED_MPS = 1.5;
+const CAMERA_HEIGHT_METERS = 1.2;
+const GYRO_TILT_DEADZONE = 0.12;
+const DEFAULT_WALK_CADENCE_HZ = 2;
+const MIN_WALK_SPEED_MPS = 0.6;
+const MAX_WALK_SPEED_MPS = 2.2;
+
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
   motionRef: React.RefObject<MotionData>;
   active: boolean;
   moveMode?: 'off' | 'gyro' | 'buttons' | 'walk';
   joystick?: JoystickValue;
+  stepCount?: number;
+  stepStrideMeters?: number;
   sensitivity?: number;
-  walkSpeed?: number;
+  movementSpeedMetersPerSecond?: number;
   calibrationTarget?: { x: number; y: number; z: number };
   calibrationMoveActive?: boolean;
   onPoseChange?: (position: { x: number; y: number; z: number }) => void;
@@ -25,8 +35,10 @@ export function GyroCamera({
   active,
   moveMode = 'off',
   sensitivity = 0.6,
-  walkSpeed = 1,
+  movementSpeedMetersPerSecond = DEFAULT_MOVEMENT_SPEED_MPS,
   joystick = { x: 0, y: 0 },
+  stepCount = 0,
+  stepStrideMeters = 0.65,
   calibrationTarget,
   calibrationMoveActive = false,
   onPoseChange,
@@ -38,16 +50,21 @@ export function GyroCamera({
   const euler = useRef(new THREE.Euler());
   const moveDirection = useRef(new THREE.Vector3());
   const strafeDirection = useRef(new THREE.Vector3());
-  const filteredAccel = useRef(0);
   const walkVelocity = useRef(0);
+  const walkDistanceRemaining = useRef(0);
+  const lastStepCountRef = useRef(stepCount);
+  const lastStepAtRef = useRef<number | null>(null);
   const calibrationVec = useRef(new THREE.Vector3());
   const baseAlphaRef = useRef<number | null>(null);
   const lastJoystickLogAtRef = useRef(0);
+  const lastMovementLogAtRef = useRef(0);
 
   useEffect(() => {
     if (!active) {
       logger.current.info('GyroCamera', 'Camera deactivated');
       baseAlphaRef.current = null;
+      walkDistanceRemaining.current = 0;
+      lastStepAtRef.current = null;
       return;
     }
 
@@ -91,10 +108,13 @@ export function GyroCamera({
 
     const forwardTiltInput = THREE.MathUtils.clamp((orientation.beta - 16) / 40, -1, 1);
     const strafeTiltInput = THREE.MathUtils.clamp(orientation.gamma / 50, -1, 1);
-    const gyroMoveAmount = Math.abs(forwardTiltInput) < 0.12 ? 0 : forwardTiltInput * 0.0035 * sensitivity;
-    const gyroStrafeAmount = Math.abs(strafeTiltInput) < 0.12 ? 0 : strafeTiltInput * 0.0035 * sensitivity;
-
-    logger.current.debug('GyroCamera', `gyro inputs: forwardTilt=${forwardTiltInput.toFixed(3)} strafeTilt=${strafeTiltInput.toFixed(3)} move=${gyroMoveAmount.toFixed(4)} strafe=${gyroStrafeAmount.toFixed(4)}`);
+    const gyroInput = new THREE.Vector2(
+      Math.abs(strafeTiltInput) < GYRO_TILT_DEADZONE ? 0 : strafeTiltInput,
+      Math.abs(forwardTiltInput) < GYRO_TILT_DEADZONE ? 0 : forwardTiltInput,
+    );
+    if (gyroInput.length() > 1) gyroInput.normalize();
+    const effectiveSpeedMps = movementSpeedMetersPerSecond * sensitivity;
+    const frameDistanceMeters = effectiveSpeedMps * delta;
 
     let moveAmount = 0;
     let strafeAmount = 0;
@@ -104,39 +124,57 @@ export function GyroCamera({
       const now = performance.now();
       if (now - lastJoystickLogAtRef.current >= 250) {
         const magnitude = Math.min(1, Math.hypot(joystick.x, joystick.y));
-        logger.current.debug('GyroCamera', `Joystick X: ${joystick.x.toFixed(2)} Y: ${joystick.y.toFixed(2)} magnitude: ${magnitude.toFixed(2)} Movement mode: ${moveMode}`);
+        logger.current.debug('GyroCamera', `World scale: 1 unit = 1 meter | Joystick X: ${joystick.x.toFixed(2)} Y: ${joystick.y.toFixed(2)} magnitude: ${magnitude.toFixed(2)} Movement mode: ${moveMode} Speed: ${effectiveSpeedMps.toFixed(2)} m/s Delta: ${delta.toFixed(3)} s Distance/frame: ${frameDistanceMeters.toFixed(3)} m Camera: (${camera.position.x.toFixed(2)} m, ${camera.position.y.toFixed(2)} m, ${camera.position.z.toFixed(2)} m)`);
         lastJoystickLogAtRef.current = now;
       }
     }
 
     if (moveMode === 'gyro') {
-      moveAmount = gyroMoveAmount;
-      strafeAmount = gyroStrafeAmount;
+      moveAmount = gyroInput.y * frameDistanceMeters;
+      strafeAmount = gyroInput.x * frameDistanceMeters;
     } else if (moveMode === 'buttons') {
-      moveAmount = joystick.y * 0.02 * sensitivity;
-      strafeAmount = joystick.x * 0.02 * sensitivity;
+      const joystickInput = new THREE.Vector2(joystick.x, joystick.y);
+      if (joystickInput.length() > 1) joystickInput.normalize();
+      moveAmount = joystickInput.y * frameDistanceMeters;
+      strafeAmount = joystickInput.x * frameDistanceMeters;
     } else if (moveMode === 'walk') {
-      const rawZAcceleration = motion?.z ?? 0;
-      const lowPassAlpha = 0.16;
-      const filteredZ = filteredAccel.current + lowPassAlpha * (rawZAcceleration - filteredAccel.current);
-      filteredAccel.current = filteredZ;
+      if (stepCount < lastStepCountRef.current) {
+        lastStepCountRef.current = stepCount;
+        walkDistanceRemaining.current = 0;
+        lastStepAtRef.current = null;
+      }
 
-      const threshold = 0.12;
-      const smoothedAccel = Math.abs(filteredZ) > threshold ? filteredZ : 0;
-      const dt = Math.max(delta, 0.016);
+      if (stepCount > lastStepCountRef.current) {
+        const newSteps = stepCount - lastStepCountRef.current;
+        const now = performance.now();
+        const stepIntervalSeconds = lastStepAtRef.current === null
+          ? 1 / DEFAULT_WALK_CADENCE_HZ
+          : Math.max((now - lastStepAtRef.current) / 1000 / newSteps, 0.25);
+        walkVelocity.current = THREE.MathUtils.clamp(
+          stepStrideMeters / stepIntervalSeconds,
+          MIN_WALK_SPEED_MPS,
+          MAX_WALK_SPEED_MPS,
+        );
+        walkDistanceRemaining.current += newSteps * stepStrideMeters;
+        lastStepCountRef.current = stepCount;
+        lastStepAtRef.current = now;
+      }
 
-      walkVelocity.current += smoothedAccel * dt * 0.9;
-      walkVelocity.current *= 0.84;
-      walkVelocity.current = THREE.MathUtils.clamp(walkVelocity.current, -1.2, 1.2);
-
-      moveAmount = walkVelocity.current * dt * 0.7 * sensitivity * walkSpeed;
-      logger.current.debug('GyroCamera', `walk inputs: rawAccel=${rawZAcceleration.toFixed(3)} filtered=${filteredZ.toFixed(3)} velocity=${walkVelocity.current.toFixed(3)} move=${moveAmount.toFixed(4)}`);
+      // Step stride is meters; cadence determines the physical m/s between detections.
+      const effectiveWalkSpeedMps = walkVelocity.current * sensitivity;
+      moveAmount = Math.min(walkDistanceRemaining.current, effectiveWalkSpeedMps * delta);
+      walkDistanceRemaining.current -= moveAmount;
+      const now = performance.now();
+      if (now - lastMovementLogAtRef.current >= 250) {
+        logger.current.debug('GyroCamera', `World scale: 1 unit = 1 meter | Walk raw acceleration=${(motion?.z ?? 0).toFixed(3)} m/s^2 steps=${stepCount} velocity=${effectiveWalkSpeedMps.toFixed(3)} m/s Delta: ${delta.toFixed(3)} s Distance/frame: ${moveAmount.toFixed(3)} m Camera: (${camera.position.x.toFixed(2)} m, ${camera.position.y.toFixed(2)} m, ${camera.position.z.toFixed(2)} m)`);
+        lastMovementLogAtRef.current = now;
+      }
     }
 
     camera.position.addScaledVector(moveDirection.current, moveAmount);
     camera.position.addScaledVector(strafeDirection.current, strafeAmount);
     camera.position.y += verticalAmount;
-    camera.position.y = Math.max(camera.position.y, 1.2);
+    camera.position.y = Math.max(camera.position.y, CAMERA_HEIGHT_METERS);
 
     onSensorChange?.({
       alpha: orientation.alpha,
