@@ -31,6 +31,30 @@ export type MotionCalibration = {
 };
 
 /**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - The original hook captured only DeviceOrientationEvent alpha/beta/gamma.
+ * - The current hook also captures DeviceMotionEvent acceleration and calibration offsets.
+ *
+ * Why:
+ * - Walking requires motion samples and mobile browsers require explicit sensor permission handling.
+ *
+ * Previous behavior:
+ * - Orientation values were stored directly without motion calibration or sensor diagnostics.
+ *
+ * Current behavior:
+ * - Orientation is calibrated before GyroCamera consumes it.
+ * - Motion acceleration is read from acceleration when available, otherwise accelerationIncludingGravity,
+ *   then bias offsets are subtracted and the result is exposed through motionRef.
+ * - Sensor listeners and permission state are cleaned up explicitly.
+ *
+ * Impact:
+ * - Affects gyro heading, walking input, accelerometer calibration, permissions, and debug logs.
+ * - Motion support was introduced by the gyro/accel prototype e6aef5c and expanded in 4a4507d.
+ */
+
+/**
  * Hook that bridges the browser's motion APIs to the AR experience.
  * It collects orientation and motion data, handles sensor permission requests,
  * and provides calibration helpers for both orientation and acceleration.

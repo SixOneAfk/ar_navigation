@@ -32,29 +32,51 @@ describe('GyroCamera', () => {
     });
   });
 
-  it('updates camera orientation when active', () => {
-    const orientationRef = { current: { alpha: 90, beta: 35, gamma: 10 } };
-    const before = camera.quaternion.clone();
+  it('advances position from detected steps in walk mode', () => {
+    const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
+    const motionRef = { current: { x: 0, y: 0, z: 2, timestamp: 16 } };
+    const startZ = camera.position.z;
 
-    render(<GyroCamera orientationRef={orientationRef as any} active />);
+    const view = render(
+      <GyroCamera
+        orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
+        active
+        moveMode="walk"
+        stepCount={0}
+        stepStrideMeters={0.65}
+      />,
+    );
 
-    expect(camera.quaternion.equals(before)).toBe(false);
+    view.rerender(
+      <GyroCamera
+        orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
+        active
+        moveMode="walk"
+        stepCount={1}
+        stepStrideMeters={0.65}
+      />,
+    );
+
+    expect(camera.position.z).not.toBe(startZ);
   });
 
-  it('advances position when step count increases', () => {
+  it('maps joystick up to camera-relative forward movement', () => {
     const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
+    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
     const startZ = camera.position.z;
 
     render(
       <GyroCamera
         orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
         active
-        movementEnabled
-        stepCount={1}
-        stepStrideMeters={1}
+        moveMode="buttons"
+        joystick={{ x: 0, y: 1 }}
       />,
     );
 
-    expect(camera.position.z).not.toBe(startZ);
+    expect(camera.position.z).toBeLessThan(startZ);
   });
 });

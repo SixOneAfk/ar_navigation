@@ -18,6 +18,25 @@ type JoystickState = {
   active: boolean;
 };
 
+/**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - This control surface contains the later navigation-panel contract, including joystick callbacks.
+ *
+ * Why:
+ * - The project evolved from a permission-only panel into a movement and calibration UI.
+ *
+ * Previous behavior:
+ * - The initial clone had no Sidebar, movement modes, or joystick contract.
+ *
+ * Current behavior:
+ * - The type preserves the full movement/calibration API for the sidebar implementation.
+ *
+ * Impact:
+ * - Documents movement controls and calibration ownership; the current active App renders its own compact panel.
+ */
+
 type SidebarProps = {
   isMenuOpen: boolean;
   onToggleMenu: () => void;

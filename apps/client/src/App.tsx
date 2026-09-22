@@ -3,39 +3,49 @@ import { OrbitControls } from '@react-three/drei';
 import { ModelScene } from './components/ModelScene';
 import { CameraPermissionPanel } from './components/CameraPermissionPanel';
 import { GyroCamera } from './components/GyroCamera';
-import type { ModelNormalization } from './components/ModelScene';
+import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
 import { useEffect, useMemo, useState } from 'react';
 
-const MODEL_POSITION: [number, number, number] = [0, 0, -4];
-const INITIAL_NAV_POSITION = {
-  x: MODEL_POSITION[0],
-  y: MODEL_POSITION[1],
-  z: MODEL_POSITION[2],
-};
-const PROTOTYPE_REAL_WORLD_SIZE = {
-  lengthMeters: 34,
-  widthMeters: 27,
-};
+const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
 const DEFAULT_STEP_STRIDE_METERS = 0.65;
+type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
+
+/**
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - The original App only enabled orientation permission and camera rotation.
+ * - The current App owns movement modes, joystick state, motion permission, and step data.
+ *
+ * Why:
+ * - The AR client needed walking and manual navigation in addition to gyro rotation.
+ *
+ * Previous behavior:
+ * - Gyro permission controlled only camera orientation.
+ *
+ * Current behavior:
+ * - Sensor permission feeds gyro rotation and accelerometer step detection.
+ * - Movement remains camera-relative and the GLB is kept at world scale.
+ *
+ * Impact:
+ * - Affects movement modes, joystick movement, walking calibration, and camera position.
+ * - Introduced by the frontend movement work in 4a4507d and later client commits.
+ */
 
 export default function App() {
   const [openPanel, setOpenPanel] = useState<PanelId>(null);
-  const [markerAnchorPosition, setMarkerAnchorPosition] = useState(
-    INITIAL_NAV_POSITION,
-  );
-  const [modelNormalization, setModelNormalization] =
-    useState<ModelNormalization | null>(null);
-  const [sceneScale, setSceneScale] = useState(1);
   const [stepThreshold, setStepThreshold] = useState(DEFAULT_STEP_THRESHOLD);
   const [stepDebounceMs, setStepDebounceMs] = useState(DEFAULT_STEP_DEBOUNCE_MS);
   const [rawDeadband, setRawDeadband] = useState(DEFAULT_RAW_DEADBAND);
   const [stepStrideMeters, setStepStrideMeters] = useState(DEFAULT_STEP_STRIDE_METERS);
+  const [moveMode, setMoveMode] = useState<MoveMode>('walk');
+  const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
 
   const accelConfig = useMemo(
     () => ({
@@ -46,7 +56,7 @@ export default function App() {
     [rawDeadband, stepDebounceMs, stepThreshold],
   );
 
-  const { state: gyroState, orientationRef, requestPermission } = useGyroscope();
+  const { state: gyroState, orientationRef, motionRef, requestPermission } = useGyroscope();
   const {
     state: accelState,
     sample: accelSample,
@@ -56,57 +66,25 @@ export default function App() {
     reset: resetAcceleration,
   } = useAcceleration(accelConfig);
   const gyroActive = gyroState === 'granted';
-  const accelActive = accelState === 'granted';
+  const cameraActive = moveMode === 'buttons' || (gyroActive && moveMode !== 'off');
+
+  const requestSensorPermission = async () => {
+    // Both listeners are requested from the same user gesture for mobile browsers.
+    await Promise.all([requestPermission(), requestAccelPermission()]);
+  };
+
+  useEffect(() => {
+    setJoystick({ x: 0, y: 0 });
+  }, [moveMode]);
 
   const format = (value: number) => value.toFixed(3);
   const togglePanel = (panel: Exclude<PanelId, null>) => {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
 
-  const mapMetersToScene = (
-    point: { x: number; y: number; z: number },
-    normalization: ModelNormalization,
-  ) => {
-    const { center, scale } = normalization;
-    return {
-      x: (point.x - center.x) * scale + MODEL_POSITION[0],
-      y: point.y * scale,
-      z: (point.z - center.z) * scale + MODEL_POSITION[2],
-    };
-  };
-
-  useEffect(() => {
-    if (!modelNormalization) {
-      return;
-    }
-
-    setSceneScale(modelNormalization.scale);
-    setMarkerAnchorPosition(mapMetersToScene(INITIAL_NAV_POSITION, modelNormalization));
-  }, [modelNormalization]);
-
   return (
     <div className="app-shell">
-      <CameraPermissionPanel
-        isOpen={openPanel === 'camera'}
-        onClose={() => setOpenPanel(null)}
-        onMarkerPositionResolved={({ x, z }) => {
-          setMarkerAnchorPosition((current) => {
-            if (!modelNormalization) {
-              return { x, y: current.y, z };
-            }
-
-            const mapped = mapMetersToScene(
-              { x, y: INITIAL_NAV_POSITION.y, z },
-              modelNormalization,
-            );
-
-            return {
-              ...mapped,
-              y: current.y,
-            };
-          });
-        }}
-      />
+      <CameraPermissionPanel isOpen={openPanel === 'camera'} onClose={() => setOpenPanel(null)} />
 
       <div className="control-dock">
         <button
@@ -159,12 +137,39 @@ export default function App() {
             <button
               type="button"
               className="gyro-panel__btn"
-              onClick={requestPermission}
+              onClick={requestSensorPermission}
               disabled={gyroState === 'requesting'}
             >
               {gyroState === 'requesting' ? 'Requesting…' : 'Enable Gyro'}
             </button>
           </div>
+
+          <div className="gyro-panel__actions" aria-label="Movement mode">
+            {(['off', 'gyro', 'walk', 'buttons'] as MoveMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className="gyro-panel__btn"
+                data-active={moveMode === mode}
+                onClick={() => setMoveMode(mode)}
+              >
+                {mode === 'off' ? 'Move Off' : mode === 'gyro' ? 'Gyro Move' : mode === 'walk' ? 'Walk Forward' : 'Buttons'}
+              </button>
+            ))}
+          </div>
+
+          {moveMode === 'buttons' && (
+            <div className="gyro-panel__joystick-area">
+              <VirtualJoystick
+                value={joystick}
+                onChange={setJoystick}
+                onRelease={() => setJoystick({ x: 0, y: 0 })}
+              />
+              <span className="gyro-panel__joystick-readout">
+                X {joystick.x.toFixed(2)} / Y {joystick.y.toFixed(2)}
+              </span>
+            </div>
+          )}
 
           <p className="gyro-panel__status" data-state={gyroState}>
             {gyroState === 'idle' && 'Gyroscope not active.'}
@@ -347,28 +352,22 @@ export default function App() {
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[8, 12, 8]} intensity={1.2} />
 
-        <ModelScene
-          modelPath="/prototype.glb"
-          enableModel={true}
-          realWorldSize={PROTOTYPE_REAL_WORLD_SIZE}
-          position={MODEL_POSITION}
-          onNormalizationResolved={setModelNormalization}
-        />
+        <ModelScene modelPath="/model.glb" enableModel={true} position={[0, 0, -4]} />
 
         {/* Gyro rotation applied inside the Canvas each frame */}
         <GyroCamera
           orientationRef={orientationRef}
-          active={gyroActive}
+          motionRef={motionRef}
+          active={cameraActive}
+          moveMode={moveMode}
+          joystick={joystick}
           stepCount={stepCount}
-          movementEnabled={accelActive}
-          stepStrideMeters={stepStrideMeters * sceneScale}
-          basePosition={markerAnchorPosition}
+          stepStrideMeters={stepStrideMeters}
+          sensitivity={1}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}
-        {!gyroActive && !accelActive && (
-          <OrbitControls target={MODEL_POSITION} />
-        )}
+        {!cameraActive && <OrbitControls target={[0, 1.2, 0]} />}
       </Canvas>
     </div>
   );

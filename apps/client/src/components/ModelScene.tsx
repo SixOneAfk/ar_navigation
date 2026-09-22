@@ -1,84 +1,76 @@
-import { Suspense, useEffect, useMemo } from 'react';
+import { Suspense } from 'react';
 import { Html, useGLTF } from '@react-three/drei';
 import { GroupProps } from '@react-three/fiber';
 import * as THREE from 'three';
 
-export type ModelNormalization = {
-  center: {
-    x: number;
-    y: number;
-    z: number;
-  };
-  scale: number;
-};
-
 type ModelSceneProps = {
   modelPath: string;
   enableModel?: boolean;
-  realWorldSize?: {
-    lengthMeters: number;
-    widthMeters: number;
-  };
-  onNormalizationResolved?: (normalization: ModelNormalization) => void;
 } & GroupProps;
 
 /**
- * Loads and scales the corridor GLTF model so it fits neatly into the scene.
- * The model is centered and resized before being displayed.
+ * CHANGE FROM INITIAL MAIN CLONE
+ *
+ * What changed:
+ * - The original model loader normalized the GLB to an arbitrary scene size.
+ * - The current loader measures bounds for diagnostics and centering only.
+ *
+ * Why:
+ * - The building is the real-world reference for AR navigation.
+ *
+ * Previous behavior:
+ * - Bounding-box size was used to calculate a fixed fit scale.
+ *
+ * Current behavior:
+ * - The imported GLB scale is preserved: 1 Three.js unit equals 1 meter.
+ * - Bounding-box logs verify the exported dimensions without changing them.
+ *
+ * Impact:
+ * - Affects GLB scale, world anchors, camera placement, and movement calibration.
+ * - Introduced by Scale is good (e72e704).
+ */
+
+/**
+ * Loads the corridor GLTF model at the scale exported by Blender.
+ * The model is centered without changing its world dimensions.
  */
 function CorridorModel({
   modelPath,
-  realWorldSize,
-  onNormalizationResolved,
-  ...groupProps
+  ...props
 }: ModelSceneProps) {
   const gltf = useGLTF(modelPath);
-  const { scene, normalization } = useMemo(() => {
-    const clonedScene = gltf.scene.clone();
+  const scene = gltf.scene.clone();
 
-    // Match the imported floor plan to its measured real-world dimensions.
-    const box = new THREE.Box3().setFromObject(clonedScene);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const modelFloorDiagonal = Math.hypot(size.x, size.z) || 1;
-    const realFloorDiagonal = realWorldSize
-      ? Math.hypot(realWorldSize.lengthMeters, realWorldSize.widthMeters)
-      : modelFloorDiagonal;
-    const fitScale = realFloorDiagonal / modelFloorDiagonal;
+  // Measure the imported bounds for diagnostics and centering only.
+  const box = new THREE.Box3().setFromObject(scene);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const modelPosition: [number, number, number] = [-center.x, -center.y, -center.z];
 
-    // Center X/Z at the group position and place the model floor at world Y=0.
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    clonedScene.scale.setScalar(fitScale);
-    clonedScene.position.set(
-      -center.x * fitScale,
-      -box.min.y * fitScale,
-      -center.z * fitScale,
-    );
-
-    return {
-      scene: clonedScene,
-      normalization: {
-        center: {
-          x: center.x,
-          y: center.y,
-          z: center.z,
-        },
-        scale: fitScale,
+  if (import.meta.env?.DEV) {
+    console.debug(
+      `GLB size: ${size.x.toFixed(2)}m x ${size.y.toFixed(2)}m x ${size.z.toFixed(2)}m`,
+      {
+        min: box.min.toArray(),
+        max: box.max.toArray(),
+        scale: scene.scale.toArray(),
+        position: modelPosition,
       },
-    };
-  }, [gltf.scene, realWorldSize]);
-
-  useEffect(() => {
-    onNormalizationResolved?.(normalization);
-  }, [normalization, onNormalizationResolved]);
+    );
+  }
 
   return (
-    <group>
-      <group position={[0, 0, 0]} rotation={[0, 0, 0]}>
-        <primitive object={scene} {...groupProps} />
+    <>
+      <group {...props}>
+        <primitive object={scene} position={modelPosition} />
       </group>
-    </group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.02, 0]}>
+        <circleGeometry args={[10, 64]} />
+        <meshStandardMaterial color="#dfe5ee" />
+      </mesh>
+    </>
   );
 }
 
