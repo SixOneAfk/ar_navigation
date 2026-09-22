@@ -67,6 +67,7 @@ describe('CameraPermissionPanel', () => {
             detected_text: 'ROOM101',
             confidence: 0.98,
             matched_node_id: 'N101',
+            marker_position: { x: 2.4, y: 1.6, z: -1.2, floor: 1 },
             candidate_count: 1,
           },
         }),

@@ -6,12 +6,21 @@ import {
   Post,
 } from '@nestjs/common';
 import { CvScanDto } from './dto/cv-scan.dto';
+import { PositioningGrpcClient } from '../position/grpc/positioning-grpc.client';
+
+type MarkerPosition = {
+  x: number;
+  y: number;
+  z: number;
+  floor: number;
+};
 
 type RecalibrationResult = {
   recalibrated: boolean;
   detected_text: string | null;
   confidence: number;
   matched_node_id: string | null;
+  marker_position: MarkerPosition | null;
   candidate_count: number;
 };
 
@@ -20,7 +29,7 @@ export class CvController {
   private readonly cvServiceBaseUrl =
     process.env.CV_SERVICE_URL ?? 'http://localhost:8000';
 
-  constructor() {
+  constructor(private readonly positioningGrpcClient: PositioningGrpcClient) {
     console.log('[GATEWAY:CvController] Initialized');
   }
 
@@ -58,11 +67,52 @@ export class CvController {
       }
 
       const recalibration = (await cvResponse.json()) as RecalibrationResult;
+      let positionEstimate: {
+        x: number;
+        y: number;
+        z: number;
+        confidence: number;
+        source: string;
+      } | null = null;
+
+      if (
+        recalibration.recalibrated &&
+        recalibration.matched_node_id &&
+        recalibration.marker_position
+      ) {
+        try {
+          positionEstimate = await this.positioningGrpcClient.estimatePosition({
+            deviceId: normalized.session_id,
+            stepCount: 0,
+            headingDeg: normalized.device_heading ?? 0,
+            wifi: [],
+            cvMarkers: [
+              {
+                markerId: recalibration.matched_node_id,
+                confidence: recalibration.confidence,
+                x: recalibration.marker_position.x,
+                y: recalibration.marker_position.y,
+                z: recalibration.marker_position.z,
+                floor: recalibration.marker_position.floor,
+              },
+            ],
+            timestamp: String(normalized.timestamp),
+          });
+        } catch (positionError) {
+          console.warn(
+            '[GATEWAY:CvController] Failed to forward marker position to core backend:',
+            positionError,
+          );
+        }
+      }
+
       const result = {
         status: 'accepted',
         source: 'cv-forwarder',
         receivedAt: new Date().toISOString(),
         recalibration,
+        markerPosition: recalibration.marker_position,
+        positionEstimate,
       };
       console.log(
         `[GATEWAY:CvController] CV frame processed for session ${normalized.session_id}; recalibrated=${recalibration.recalibrated}`,

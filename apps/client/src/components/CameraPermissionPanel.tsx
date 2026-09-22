@@ -25,11 +25,19 @@ const DEMO_IMAGE_URL = '/demo-room-101.svg';
 type CameraPermissionPanelProps = {
   isOpen: boolean;
   onClose: () => void;
+  onMarkerPositionResolved?: (payload: {
+    x: number;
+    y: number;
+    z: number;
+    floor: number;
+    markerId: string;
+  }) => void;
 };
 
 export function CameraPermissionPanel({
   isOpen,
   onClose,
+  onMarkerPositionResolved,
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -111,6 +119,18 @@ export function CameraPermissionPanel({
         abortController.signal,
       );
       setScanResult(response.recalibration);
+      const markerPosition =
+        response.markerPosition ?? response.recalibration.marker_position;
+      if (
+        markerPosition &&
+        response.recalibration.recalibrated &&
+        response.recalibration.matched_node_id
+      ) {
+        onMarkerPositionResolved?.({
+          ...markerPosition,
+          markerId: response.recalibration.matched_node_id,
+        });
+      }
       setFramesProcessed((current) => current + 1);
       setProcessingTimeMs(Math.round(performance.now() - startedAt));
       setScanState('success');

@@ -26,6 +26,7 @@ const positioningProtoPath =
   ],
   controllers: [PositionController],
   providers: [PositioningGrpcClient],
+  exports: [PositioningGrpcClient],
 })
 export class PositionModule {
   constructor() {

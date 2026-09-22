@@ -6,6 +6,10 @@ export type BeaconRssi = {
 export type CvMarker = {
   markerId: string;
   confidence: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  floor?: number;
 };
 
 export type EstimatePositionRequest = {

@@ -10,6 +10,10 @@ type BeaconRssi = {
 type CvMarker = {
   markerId: string;
   confidence: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  floor?: number;
 };
 
 type EstimatePositionRequest = {

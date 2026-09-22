@@ -8,7 +8,21 @@ export type RecalibrationResult = {
   detected_text: string | null;
   confidence: number;
   matched_node_id: string | null;
+  marker_position: {
+    x: number;
+    y: number;
+    z: number;
+    floor: number;
+  } | null;
   candidate_count: number;
+};
+
+export type PositionEstimate = {
+  x: number;
+  y: number;
+  z: number;
+  confidence: number;
+  source: string;
 };
 
 export type CvScanResponse = {
@@ -16,6 +30,13 @@ export type CvScanResponse = {
   source: string;
   receivedAt: string;
   recalibration: RecalibrationResult;
+  markerPosition?: {
+    x: number;
+    y: number;
+    z: number;
+    floor: number;
+  } | null;
+  positionEstimate?: PositionEstimate | null;
 };
 
 function renderJpegFrame(

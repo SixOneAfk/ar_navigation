@@ -1,43 +1,83 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import { Html, useGLTF } from '@react-three/drei';
 import { GroupProps } from '@react-three/fiber';
 import * as THREE from 'three';
 
+export type ModelNormalization = {
+  center: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  scale: number;
+};
+
 type ModelSceneProps = {
   modelPath: string;
   enableModel?: boolean;
+  realWorldSize?: {
+    lengthMeters: number;
+    widthMeters: number;
+  };
+  onNormalizationResolved?: (normalization: ModelNormalization) => void;
 } & GroupProps;
 
 /**
  * Loads and scales the corridor GLTF model so it fits neatly into the scene.
  * The model is centered and resized before being displayed.
  */
-function CorridorModel({ modelPath, ...props }: ModelSceneProps) {
+function CorridorModel({
+  modelPath,
+  realWorldSize,
+  onNormalizationResolved,
+  ...groupProps
+}: ModelSceneProps) {
   const gltf = useGLTF(modelPath);
-  const scene = gltf.scene.clone();
+  const { scene, normalization } = useMemo(() => {
+    const clonedScene = gltf.scene.clone();
 
-  // Measure the model bounds so we can normalize its size.
-  const box = new THREE.Box3().setFromObject(scene);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const maxDimension = Math.max(size.x, size.y, size.z) || 1;
-  const fitScale = 2.2 / maxDimension;
+    // Match the imported floor plan to its measured real-world dimensions.
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const modelFloorDiagonal = Math.hypot(size.x, size.z) || 1;
+    const realFloorDiagonal = realWorldSize
+      ? Math.hypot(realWorldSize.lengthMeters, realWorldSize.widthMeters)
+      : modelFloorDiagonal;
+    const fitScale = realFloorDiagonal / modelFloorDiagonal;
 
-  // Reposition the model so its origin sits at the center of the scene.
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-  scene.position.set(-center.x, -center.y, -center.z);
-  scene.scale.setScalar(fitScale);
+    // Center X/Z at the group position and place the model floor at world Y=0.
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    clonedScene.scale.setScalar(fitScale);
+    clonedScene.position.set(
+      -center.x * fitScale,
+      -box.min.y * fitScale,
+      -center.z * fitScale,
+    );
+
+    return {
+      scene: clonedScene,
+      normalization: {
+        center: {
+          x: center.x,
+          y: center.y,
+          z: center.z,
+        },
+        scale: fitScale,
+      },
+    };
+  }, [gltf.scene, realWorldSize]);
+
+  useEffect(() => {
+    onNormalizationResolved?.(normalization);
+  }, [normalization, onNormalizationResolved]);
 
   return (
     <group>
       <group position={[0, 0, 0]} rotation={[0, 0, 0]}>
-        <primitive object={scene} {...props} />
+        <primitive object={scene} {...groupProps} />
       </group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.02, 0]}>
-        <circleGeometry args={[10, 64]} />
-        <meshStandardMaterial color="#dfe5ee" />
-      </mesh>
     </group>
   );
 }

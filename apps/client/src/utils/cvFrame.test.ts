@@ -95,6 +95,7 @@ describe('sendCvFrame', () => {
       detected_text: 'ROOM101',
       confidence: 0.9,
       matched_node_id: 'N101',
+      marker_position: { x: 2.4, y: 1.6, z: -1.2, floor: 1 },
       candidate_count: 1,
     };
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -104,6 +105,14 @@ describe('sendCvFrame', () => {
           source: 'cv-forwarder',
           receivedAt: '2026-08-16T12:00:00.000Z',
           recalibration,
+          markerPosition: { x: 2.4, y: 1.6, z: -1.2, floor: 1 },
+          positionEstimate: {
+            x: 2.4,
+            y: 1.6,
+            z: -1.2,
+            confidence: 0.95,
+            source: 'core-backend.cv-marker-anchor',
+          },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),

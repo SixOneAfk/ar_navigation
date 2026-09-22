@@ -8,6 +8,10 @@ type BeaconRssi = {
 type CvMarker = {
   markerId: string;
   confidence: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  floor?: number;
 };
 
 type EstimatePositionRequest = {
@@ -62,6 +66,31 @@ export class PositioningService {
       }
 
       console.log('[CORE-BACKEND:PositioningService] Input validation passed');
+
+      const anchoredMarker = payload.cvMarkers?.find(
+        (marker) =>
+          Number.isFinite(marker.x) &&
+          Number.isFinite(marker.y) &&
+          Number.isFinite(marker.z),
+      );
+
+      if (anchoredMarker) {
+        const anchoredResult = {
+          x: Number((anchoredMarker.x as number).toFixed(3)),
+          y: Number((anchoredMarker.y as number).toFixed(3)),
+          z: Number((anchoredMarker.z as number).toFixed(3)),
+          confidence: Number(Math.max(anchoredMarker.confidence, 0.9).toFixed(3)),
+          source: 'core-backend.cv-marker-anchor',
+        };
+
+        console.log('[CORE-BACKEND:PositioningService] Using CV marker anchor for position:', {
+          markerId: anchoredMarker.markerId,
+          floor: anchoredMarker.floor,
+          ...anchoredResult,
+        });
+
+        return anchoredResult;
+      }
 
       const headingRad = (payload.headingDeg * Math.PI) / 180;
       console.log('[CORE-BACKEND:PositioningService] Converted heading:', {

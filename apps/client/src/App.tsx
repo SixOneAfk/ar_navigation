@@ -3,11 +3,21 @@ import { OrbitControls } from '@react-three/drei';
 import { ModelScene } from './components/ModelScene';
 import { CameraPermissionPanel } from './components/CameraPermissionPanel';
 import { GyroCamera } from './components/GyroCamera';
+import type { ModelNormalization } from './components/ModelScene';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: -3.5 };
+const MODEL_POSITION: [number, number, number] = [0, 0, -4];
+const INITIAL_NAV_POSITION = {
+  x: MODEL_POSITION[0],
+  y: MODEL_POSITION[1],
+  z: MODEL_POSITION[2],
+};
+const PROTOTYPE_REAL_WORLD_SIZE = {
+  lengthMeters: 34,
+  widthMeters: 27,
+};
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
@@ -16,6 +26,12 @@ type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
 
 export default function App() {
   const [openPanel, setOpenPanel] = useState<PanelId>(null);
+  const [markerAnchorPosition, setMarkerAnchorPosition] = useState(
+    INITIAL_NAV_POSITION,
+  );
+  const [modelNormalization, setModelNormalization] =
+    useState<ModelNormalization | null>(null);
+  const [sceneScale, setSceneScale] = useState(1);
   const [stepThreshold, setStepThreshold] = useState(DEFAULT_STEP_THRESHOLD);
   const [stepDebounceMs, setStepDebounceMs] = useState(DEFAULT_STEP_DEBOUNCE_MS);
   const [rawDeadband, setRawDeadband] = useState(DEFAULT_RAW_DEADBAND);
@@ -47,9 +63,50 @@ export default function App() {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
 
+  const mapMetersToScene = (
+    point: { x: number; y: number; z: number },
+    normalization: ModelNormalization,
+  ) => {
+    const { center, scale } = normalization;
+    return {
+      x: (point.x - center.x) * scale + MODEL_POSITION[0],
+      y: point.y * scale,
+      z: (point.z - center.z) * scale + MODEL_POSITION[2],
+    };
+  };
+
+  useEffect(() => {
+    if (!modelNormalization) {
+      return;
+    }
+
+    setSceneScale(modelNormalization.scale);
+    setMarkerAnchorPosition(mapMetersToScene(INITIAL_NAV_POSITION, modelNormalization));
+  }, [modelNormalization]);
+
   return (
     <div className="app-shell">
-      <CameraPermissionPanel isOpen={openPanel === 'camera'} onClose={() => setOpenPanel(null)} />
+      <CameraPermissionPanel
+        isOpen={openPanel === 'camera'}
+        onClose={() => setOpenPanel(null)}
+        onMarkerPositionResolved={({ x, z }) => {
+          setMarkerAnchorPosition((current) => {
+            if (!modelNormalization) {
+              return { x, y: current.y, z };
+            }
+
+            const mapped = mapMetersToScene(
+              { x, y: INITIAL_NAV_POSITION.y, z },
+              modelNormalization,
+            );
+
+            return {
+              ...mapped,
+              y: current.y,
+            };
+          });
+        }}
+      />
 
       <div className="control-dock">
         <button
@@ -290,7 +347,13 @@ export default function App() {
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[8, 12, 8]} intensity={1.2} />
 
-        <ModelScene modelPath="/model.glb" enableModel={true} position={[0, 0, -4]} />
+        <ModelScene
+          modelPath="/prototype.glb"
+          enableModel={true}
+          realWorldSize={PROTOTYPE_REAL_WORLD_SIZE}
+          position={MODEL_POSITION}
+          onNormalizationResolved={setModelNormalization}
+        />
 
         {/* Gyro rotation applied inside the Canvas each frame */}
         <GyroCamera
@@ -298,12 +361,14 @@ export default function App() {
           active={gyroActive}
           stepCount={stepCount}
           movementEnabled={accelActive}
-          stepStrideMeters={stepStrideMeters}
-          basePosition={INITIAL_NAV_POSITION}
+          stepStrideMeters={stepStrideMeters * sceneScale}
+          basePosition={markerAnchorPosition}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}
-        {!gyroActive && !accelActive && <OrbitControls target={[0, 1.2, 0]} />}
+        {!gyroActive && !accelActive && (
+          <OrbitControls target={MODEL_POSITION} />
+        )}
       </Canvas>
     </div>
   );

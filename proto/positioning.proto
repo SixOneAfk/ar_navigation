@@ -14,6 +14,10 @@ message BeaconRssi {
 message CvMarker {
   string marker_id = 1;
   float confidence = 2;
+  double x = 3;
+  double y = 4;
+  double z = 5;
+  int32 floor = 6;
 }
 
 message EstimatePositionRequest {

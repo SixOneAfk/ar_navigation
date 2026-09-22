@@ -36,6 +36,13 @@ KNOWN_SIGNAGE = {
     "ROOM201": "N201",
 }
 
+MARKER_COORDINATES = {
+    "N101": {"x": 2.4, "y": 1.6, "z": -1.2, "floor": 1},
+    "N103": {"x": 6.0, "y": 1.6, "z": 0.4, "floor": 1},
+    "N104": {"x": 8.3, "y": 1.6, "z": 3.1, "floor": 1},
+    "N201": {"x": 1.2, "y": 1.6, "z": 5.8, "floor": 2},
+}
+
 
 class EstimatedPosition(BaseModel):
     x: float
@@ -67,6 +74,7 @@ class RecalibrateResponse(BaseModel):
     detected_text: Optional[str]
     confidence: float
     matched_node_id: Optional[str]
+    marker_position: Optional[dict[str, float | int]]
     candidate_count: int
 
 
@@ -204,11 +212,14 @@ def recalibrate_position(payload: RecalibrateRequest) -> RecalibrateResponse:
     candidates = _ocr_candidates(processed)
     matched_node_id, detected_text, confidence = _match_node(candidates)
 
+    marker_position = MARKER_COORDINATES.get(matched_node_id) if matched_node_id else None
+
     return RecalibrateResponse(
         recalibrated=matched_node_id is not None,
         detected_text=detected_text,
         confidence=round(float(confidence), 3),
         matched_node_id=matched_node_id,
+        marker_position=marker_position,
         candidate_count=len(candidates),
     )
 
