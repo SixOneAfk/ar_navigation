@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { MotionData, Orientation } from '../hooks/useGyroscope';
+import type { HeadingData, MotionData, Orientation } from '../hooks/useGyroscope';
 import type { JoystickValue } from './VirtualJoystick';
 import { createDebugLogger } from '../utils/debugLogger';
 
 /** One Three.js world unit represents one real-world meter. */
 export const DEFAULT_MOVEMENT_SPEED_MPS = 1.5;
 const CAMERA_HEIGHT_METERS = 1.2;
-const GYRO_TILT_DEADZONE = 0.12;
+const MAX_DEBUG_HEIGHT_METERS = 3.4;
+const VERTICAL_SPEED_MULTIPLIER = 0.7;
 const DEFAULT_WALK_CADENCE_HZ = 2;
 const MIN_WALK_SPEED_MPS = 0.6;
 const MAX_WALK_SPEED_MPS = 2.2;
@@ -37,10 +38,13 @@ const MAX_WALK_SPEED_MPS = 2.2;
 
 type GyroCameraProps = {
   orientationRef: React.RefObject<Orientation>;
+  headingRef?: React.RefObject<HeadingData>;
   motionRef: React.RefObject<MotionData>;
   active: boolean;
   moveMode?: 'off' | 'gyro' | 'buttons' | 'walk';
   joystick?: JoystickValue;
+  verticalAxis?: number;
+  debugVerticalEnabled?: boolean;
   stepCount?: number;
   stepStrideMeters?: number;
   sensitivity?: number;
@@ -53,12 +57,15 @@ type GyroCameraProps = {
 
 export function GyroCamera({
   orientationRef,
+  headingRef,
   motionRef,
   active,
   moveMode = 'off',
   sensitivity = 0.6,
   movementSpeedMetersPerSecond = DEFAULT_MOVEMENT_SPEED_MPS,
   joystick = { x: 0, y: 0 },
+  verticalAxis = 0,
+  debugVerticalEnabled = false,
   stepCount = 0,
   stepStrideMeters = 0.65,
   calibrationTarget,
@@ -77,14 +84,14 @@ export function GyroCamera({
   const lastStepCountRef = useRef(stepCount);
   const lastStepAtRef = useRef<number | null>(null);
   const calibrationVec = useRef(new THREE.Vector3());
-  const baseAlphaRef = useRef<number | null>(null);
+  const baseHeadingRef = useRef<number | null>(null);
   const lastJoystickLogAtRef = useRef(0);
   const lastMovementLogAtRef = useRef(0);
 
   useEffect(() => {
     if (!active) {
       logger.current.info('GyroCamera', 'Camera deactivated');
-      baseAlphaRef.current = null;
+      baseHeadingRef.current = null;
       walkDistanceRemaining.current = 0;
       lastStepAtRef.current = null;
       return;
@@ -92,11 +99,13 @@ export function GyroCamera({
 
     logger.current.info('GyroCamera', `Camera activated with moveMode=${moveMode}`);
 
-    if (baseAlphaRef.current === null) {
-      baseAlphaRef.current = orientationRef.current?.alpha ?? 0;
-      logger.current.info('GyroCamera', `Base alpha set to ${baseAlphaRef.current.toFixed(2)}`);
+    if (baseHeadingRef.current === null) {
+      const startingHeading =
+        headingRef?.current?.fusedHeadingDeg ?? orientationRef.current?.alpha ?? 0;
+      baseHeadingRef.current = startingHeading;
+      logger.current.info('GyroCamera', `Base heading set to ${baseHeadingRef.current.toFixed(2)}`);
     }
-  }, [active, moveMode, orientationRef]);
+  }, [active, headingRef, moveMode, orientationRef]);
 
   useFrame((_, delta) => {
     if (!active) return;
@@ -104,10 +113,12 @@ export function GyroCamera({
     const orientation = orientationRef.current;
     if (!orientation) return;
 
-    const baseAlpha = baseAlphaRef.current ?? orientation.alpha;
-    const relativeAlpha = ((orientation.alpha - baseAlpha + 540) % 360) - 180;
+    const activeHeading =
+      headingRef?.current?.fusedHeadingDeg ?? orientation.alpha;
+    const baseHeading = baseHeadingRef.current ?? activeHeading;
+    const relativeAlpha = ((activeHeading - baseHeading + 540) % 360) - 180;
 
-    logger.current.debug('GyroCamera', `baseAlpha=${baseAlpha.toFixed(2)} relativeAlpha=${relativeAlpha.toFixed(2)}`);
+    logger.current.debug('GyroCamera', `baseHeading=${baseHeading.toFixed(2)} relativeAlpha=${relativeAlpha.toFixed(2)}`);
 
     euler.current.set(0, THREE.MathUtils.degToRad(relativeAlpha), 0, 'YXZ');
     targetQ.current.setFromEuler(euler.current);
@@ -128,13 +139,6 @@ export function GyroCamera({
       camera.position.lerp(calibrationVec.current, 0.09);
     }
 
-    const forwardTiltInput = THREE.MathUtils.clamp((orientation.beta - 16) / 40, -1, 1);
-    const strafeTiltInput = THREE.MathUtils.clamp(orientation.gamma / 50, -1, 1);
-    const gyroInput = new THREE.Vector2(
-      Math.abs(strafeTiltInput) < GYRO_TILT_DEADZONE ? 0 : strafeTiltInput,
-      Math.abs(forwardTiltInput) < GYRO_TILT_DEADZONE ? 0 : forwardTiltInput,
-    );
-    if (gyroInput.length() > 1) gyroInput.normalize();
     const effectiveSpeedMps = movementSpeedMetersPerSecond * sensitivity;
     const frameDistanceMeters = effectiveSpeedMps * delta;
 
@@ -152,13 +156,19 @@ export function GyroCamera({
     }
 
     if (moveMode === 'gyro') {
-      moveAmount = gyroInput.y * frameDistanceMeters;
-      strafeAmount = gyroInput.x * frameDistanceMeters;
+      // Intentionally orientation-only: no translation from phone tilt in gyro mode.
+      moveAmount = 0;
+      strafeAmount = 0;
+      verticalAmount = 0;
     } else if (moveMode === 'buttons') {
       const joystickInput = new THREE.Vector2(joystick.x, joystick.y);
       if (joystickInput.length() > 1) joystickInput.normalize();
       moveAmount = joystickInput.y * frameDistanceMeters;
       strafeAmount = joystickInput.x * frameDistanceMeters;
+      if (debugVerticalEnabled) {
+        const normalizedVerticalAxis = THREE.MathUtils.clamp(verticalAxis, -1, 1);
+        verticalAmount = normalizedVerticalAxis * frameDistanceMeters * VERTICAL_SPEED_MULTIPLIER;
+      }
     } else if (moveMode === 'walk') {
       if (stepCount < lastStepCountRef.current) {
         lastStepCountRef.current = stepCount;
@@ -196,7 +206,16 @@ export function GyroCamera({
     camera.position.addScaledVector(moveDirection.current, moveAmount);
     camera.position.addScaledVector(strafeDirection.current, strafeAmount);
     camera.position.y += verticalAmount;
-    camera.position.y = Math.max(camera.position.y, CAMERA_HEIGHT_METERS);
+    if (debugVerticalEnabled) {
+      // Keep debug vertical controls bounded to avoid flying too far from test geometry.
+      camera.position.y = THREE.MathUtils.clamp(
+        camera.position.y,
+        CAMERA_HEIGHT_METERS,
+        MAX_DEBUG_HEIGHT_METERS,
+      );
+    } else {
+      camera.position.y = Math.max(camera.position.y, CAMERA_HEIGHT_METERS);
+    }
 
     onSensorChange?.({
       alpha: orientation.alpha,

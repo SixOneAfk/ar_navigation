@@ -30,6 +30,38 @@ export type MotionCalibration = {
   zOffset: number;
 };
 
+export type HeadingData = {
+  rawGyroHeadingDeg: number;
+  rawCompassHeadingDeg: number | null;
+  fusedHeadingDeg: number;
+  hasCompass: boolean;
+  confidence: number;
+  timestamp: number;
+};
+
+function normalizeHeadingDeg(value: number) {
+  return ((value % 360) + 360) % 360;
+}
+
+function shortestHeadingDeltaDeg(from: number, to: number) {
+  return ((to - from + 540) % 360) - 180;
+}
+
+function getCompassHeadingDeg(event: DeviceOrientationEvent): number | null {
+  const webkitHeading = (
+    event as DeviceOrientationEvent & { webkitCompassHeading?: number }
+  ).webkitCompassHeading;
+  if (typeof webkitHeading === 'number' && Number.isFinite(webkitHeading)) {
+    return normalizeHeadingDeg(webkitHeading);
+  }
+
+  if (event.absolute && typeof event.alpha === 'number' && Number.isFinite(event.alpha)) {
+    return normalizeHeadingDeg(event.alpha);
+  }
+
+  return null;
+}
+
 /**
  * CHANGE FROM INITIAL MAIN CLONE
  *
@@ -68,6 +100,14 @@ export function useGyroscope() {
   const motionCalibrationRef = useRef<MotionCalibration>({ xOffset: 0, yOffset: 0, zOffset: 0 });
   const [motionCalibrating, setMotionCalibrating] = useState(false);
   const orientationRef = useRef<Orientation>({ alpha: 0, beta: 0, gamma: 0 });
+  const headingRef = useRef<HeadingData>({
+    rawGyroHeadingDeg: 0,
+    rawCompassHeadingDeg: null,
+    fusedHeadingDeg: 0,
+    hasCompass: false,
+    confidence: 0,
+    timestamp: 0,
+  });
   const motionRef = useRef<MotionData>({ x: 0, y: 0, z: 0, timestamp: 0 });
 
   const orientationHandlerRef = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
@@ -81,6 +121,7 @@ export function useGyroscope() {
   const lastMotionTsRef = useRef<number | null>(null);
   const lastOrientationValuesRef = useRef<Orientation | null>(null);
   const lastMotionValuesRef = useRef<MotionData | null>(null);
+  const lastCompassHeadingRef = useRef<number | null>(null);
 
   useEffect(() => {
     calibrationRef.current = calibration;
@@ -125,6 +166,38 @@ export function useGyroscope() {
 
       orientationRef.current = nextOrientation;
       lastOrientationValuesRef.current = nextOrientation;
+
+      const rawGyroHeadingDeg = normalizeHeadingDeg(nextOrientation.alpha);
+      const rawCompassHeadingDeg = getCompassHeadingDeg(e);
+      const hasCompass = rawCompassHeadingDeg !== null;
+
+      // Keep gyro and compass independent: gyro drives motion heading, compass is diagnostic/anchor only.
+      const fusedHeadingDeg = rawGyroHeadingDeg;
+      let confidence = 0;
+      if (hasCompass) {
+        const compassJump =
+          lastCompassHeadingRef.current === null
+            ? 0
+            : Math.abs(
+                shortestHeadingDeltaDeg(
+                  lastCompassHeadingRef.current,
+                  rawCompassHeadingDeg,
+                ),
+              );
+
+        // Confidence reflects compass stability only, not a fused control signal.
+        confidence = Math.max(0.35, 1 - Math.min(compassJump / 90, 1));
+        lastCompassHeadingRef.current = rawCompassHeadingDeg;
+      }
+
+      headingRef.current = {
+        rawGyroHeadingDeg,
+        rawCompassHeadingDeg,
+        fusedHeadingDeg,
+        hasCompass,
+        confidence,
+        timestamp: e.timeStamp ?? Date.now(),
+      };
 
       if (orientationEventCountRef.current === 1) {
         logger.current.info('Gyroscope', `First orientation reading received: alpha=${nextOrientation.alpha.toFixed(2)}, beta=${nextOrientation.beta.toFixed(2)}, gamma=${nextOrientation.gamma.toFixed(2)}`);
@@ -345,6 +418,7 @@ export function useGyroscope() {
   return {
     state,
     orientationRef,
+    headingRef,
     motionRef,
     calibration,
     motionCalibration,

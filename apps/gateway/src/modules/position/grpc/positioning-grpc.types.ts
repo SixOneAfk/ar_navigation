@@ -19,6 +19,18 @@ export type EstimatePositionRequest = {
   wifi: BeaconRssi[];
   cvMarkers: CvMarker[];
   timestamp: string;
+  estimatedPose?: {
+    x: number;
+    y: number;
+    z: number;
+    floor?: number;
+  };
+  poseConfidence?: number;
+  frameId?: string;
+  sequenceNumber?: number;
+  velocityHintMps?: number;
+  devicePitchDeg?: number;
+  deviceRollDeg?: number;
 };
 
 export type EstimatePositionResponse = {
@@ -27,6 +39,10 @@ export type EstimatePositionResponse = {
   z: number;
   confidence: number;
   source: string;
+  correctionMode?: string;
+  correctionApplied?: boolean;
+  decisionReason?: string;
+  candidateDistanceM?: number;
 };
 
 export type PositioningGrpcService = {

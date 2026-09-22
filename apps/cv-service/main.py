@@ -76,6 +76,8 @@ class RecalibrateResponse(BaseModel):
     matched_node_id: Optional[str]
     marker_position: Optional[dict[str, float | int]]
     candidate_count: int
+    ocr_candidates: list[dict[str, float | str]]
+    failure_reason: Optional[str] = None
 
 
 @lru_cache(maxsize=1)
@@ -200,6 +202,23 @@ def _match_node(candidates: list[tuple[str, float]]) -> tuple[Optional[str], Opt
     return None, None, 0.0
 
 
+def _build_ranked_candidates(candidates: list[tuple[str, float]]) -> list[dict[str, float | str]]:
+    ranked: list[dict[str, float | str]] = []
+    for raw_text, confidence in candidates:
+        normalized = _normalize_text(raw_text)
+        if not normalized:
+            continue
+        ranked.append(
+            {
+                "text": normalized,
+                "confidence": round(float(confidence), 3),
+            }
+        )
+
+    ranked.sort(key=lambda item: float(item["confidence"]), reverse=True)
+    return ranked[:5]
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cv-service"}
@@ -211,8 +230,12 @@ def recalibrate_position(payload: RecalibrateRequest) -> RecalibrateResponse:
     processed = _preprocess_for_ocr(image)
     candidates = _ocr_candidates(processed)
     matched_node_id, detected_text, confidence = _match_node(candidates)
+    ranked_candidates = _build_ranked_candidates(candidates)
 
     marker_position = MARKER_COORDINATES.get(matched_node_id) if matched_node_id else None
+    failure_reason: Optional[str] = None
+    if matched_node_id is None:
+        failure_reason = "no_text_candidates" if len(ranked_candidates) == 0 else "no_confident_match"
 
     return RecalibrateResponse(
         recalibrated=matched_node_id is not None,
@@ -221,6 +244,8 @@ def recalibrate_position(payload: RecalibrateRequest) -> RecalibrateResponse:
         matched_node_id=matched_node_id,
         marker_position=marker_position,
         candidate_count=len(candidates),
+        ocr_candidates=ranked_candidates,
+        failure_reason=failure_reason,
     )
 
 

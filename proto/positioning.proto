@@ -20,6 +20,13 @@ message CvMarker {
   int32 floor = 6;
 }
 
+message EstimatedPose {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  int32 floor = 4;
+}
+
 message EstimatePositionRequest {
   string device_id = 1;
   int32 step_count = 2;
@@ -27,6 +34,13 @@ message EstimatePositionRequest {
   repeated BeaconRssi wifi = 4;
   repeated CvMarker cv_markers = 5;
   string timestamp = 6;
+  EstimatedPose estimated_pose = 7;
+  double pose_confidence = 8;
+  string frame_id = 9;
+  int64 sequence_number = 10;
+  double velocity_hint_mps = 11;
+  double device_pitch_deg = 12;
+  double device_roll_deg = 13;
 }
 
 message EstimatePositionResponse {
@@ -35,4 +49,8 @@ message EstimatePositionResponse {
   double z = 3;
   double confidence = 4;
   string source = 5;
+  string correction_mode = 6;
+  bool correction_applied = 7;
+  string decision_reason = 8;
+  double candidate_distance_m = 9;
 }

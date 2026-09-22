@@ -5,6 +5,7 @@ import {
   CV_FRAME_HEIGHT,
   CV_FRAME_INTERVAL_MS,
   CV_FRAME_WIDTH,
+  type CvScanResponse,
   type RecalibrationResult,
   sendCvFrame,
 } from '../utils/cvFrame';
@@ -54,6 +55,7 @@ export function CameraPermissionPanel({
   const [scanResult, setScanResult] = useState<RecalibrationResult | null>(
     null,
   );
+  const [scanEnvelope, setScanEnvelope] = useState<CvScanResponse | null>(null);
   const [framesProcessed, setFramesProcessed] = useState(0);
   const [framePreview, setFramePreview] = useState<string | null>(null);
   const [frameLabel, setFrameLabel] = useState('');
@@ -118,6 +120,7 @@ export function CameraPermissionPanel({
         sessionIdRef.current,
         abortController.signal,
       );
+      setScanEnvelope(response);
       setScanResult(response.recalibration);
       const markerPosition =
         response.markerPosition ?? response.recalibration.marker_position;
@@ -200,6 +203,7 @@ export function CameraPermissionPanel({
     setFramePreview(null);
     setFrameLabel('');
     setScanResult(null);
+    setScanEnvelope(null);
     setFramesProcessed(0);
     setProcessingTimeMs(null);
     setErrorMessage('');
@@ -256,6 +260,7 @@ export function CameraPermissionPanel({
     stopMediaStream();
     setCameraState('idle');
     setScanResult(null);
+    setScanEnvelope(null);
     setFramesProcessed(0);
     setProcessingTimeMs(null);
     setErrorMessage('');
@@ -466,6 +471,32 @@ export function CameraPermissionPanel({
                         {processingTimeMs === null
                           ? '—'
                           : `${processingTimeMs} ms`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Correction</dt>
+                      <dd>{scanEnvelope?.correctionDecision?.mode ?? 'N/A'}</dd>
+                    </div>
+                    <div>
+                      <dt>Decision</dt>
+                      <dd>
+                        {scanEnvelope?.correctionDecision?.applied
+                          ? 'Applied'
+                          : scanEnvelope?.correctionDecision
+                            ? 'Rejected'
+                            : 'N/A'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Reason</dt>
+                      <dd>{scanEnvelope?.correctionDecision?.reason ?? 'N/A'}</dd>
+                    </div>
+                    <div>
+                      <dt>Distance Gate</dt>
+                      <dd>
+                        {scanEnvelope?.correctionDecision?.candidateDistanceM === undefined
+                          ? 'N/A'
+                          : `${scanEnvelope.correctionDecision.candidateDistanceM.toFixed(2)} m`}
                       </dd>
                     </div>
                   </dl>

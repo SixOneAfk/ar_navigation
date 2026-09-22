@@ -15,6 +15,10 @@ describe('CvController', () => {
         z: -1.2,
         confidence: 0.95,
         source: 'core-backend.cv-marker-anchor',
+        correctionMode: 'hard_snap',
+        correctionApplied: true,
+        decisionReason: 'high_confidence_nearby_marker',
+        candidateDistanceM: 1.4,
       }),
     };
     controller = new CvController(positioningGrpcClient as PositioningGrpcClient);
@@ -42,8 +46,11 @@ describe('CvController', () => {
     const dto: CvScanDto = {
       session_id: 'phone-session',
       timestamp: 123,
-      estimated_position: { x: 1, y: 2, floor: 1 },
+      estimated_position: { x: 1, y: 2, z: 0.5, floor: 1 },
       image_payload: 'data:image/jpeg;base64,abc',
+      frame_id: 'frame-42',
+      sequence_number: 42,
+      pose_confidence: 0.67,
     };
 
     const result = await controller.scan(dto);
@@ -52,13 +59,23 @@ describe('CvController', () => {
       expect.objectContaining({
         status: 'accepted',
         source: 'cv-forwarder',
+        frameId: 'frame-42',
+        sequenceNumber: 42,
         recalibration,
         markerPosition: recalibration.marker_position,
+        correctionDecision: expect.objectContaining({
+          mode: 'hard_snap',
+          applied: true,
+        }),
       }),
     );
     expect(positioningGrpcClient.estimatePosition).toHaveBeenCalledWith(
       expect.objectContaining({
         deviceId: 'phone-session',
+        frameId: 'frame-42',
+        sequenceNumber: 42,
+        poseConfidence: 0.67,
+        estimatedPose: { x: 1, y: 2, z: 0.5, floor: 1 },
         cvMarkers: [
           expect.objectContaining({
             markerId: 'N101',

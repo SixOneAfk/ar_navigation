@@ -79,4 +79,42 @@ describe('GyroCamera', () => {
 
     expect(camera.position.z).toBeLessThan(startZ);
   });
+
+  it('keeps gyro mode orientation-only without tilt translation', () => {
+    const orientationRef = { current: { alpha: 0, beta: 42, gamma: 38 } };
+    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
+    const start = camera.position.clone();
+
+    render(
+      <GyroCamera
+        orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
+        active
+        moveMode="gyro"
+      />,
+    );
+
+    expect(camera.position.x).toBeCloseTo(start.x);
+    expect(camera.position.y).toBeCloseTo(start.y);
+    expect(camera.position.z).toBeCloseTo(start.z);
+  });
+
+  it('moves vertically in buttons mode when debug vertical is enabled', () => {
+    const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
+    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
+    const startY = camera.position.y;
+
+    render(
+      <GyroCamera
+        orientationRef={orientationRef as any}
+        motionRef={motionRef as any}
+        active
+        moveMode="buttons"
+        debugVerticalEnabled
+        verticalAxis={1}
+      />,
+    );
+
+    expect(camera.position.y).toBeGreaterThan(startY);
+  });
 });

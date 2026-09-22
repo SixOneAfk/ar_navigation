@@ -15,6 +15,11 @@ export type RecalibrationResult = {
     floor: number;
   } | null;
   candidate_count: number;
+  ocr_candidates?: Array<{
+    text: string;
+    confidence: number;
+  }>;
+  failure_reason?: string | null;
 };
 
 export type PositionEstimate = {
@@ -29,6 +34,8 @@ export type CvScanResponse = {
   status: string;
   source: string;
   receivedAt: string;
+  frameId?: string;
+  sequenceNumber?: number;
   recalibration: RecalibrationResult;
   markerPosition?: {
     x: number;
@@ -37,6 +44,28 @@ export type CvScanResponse = {
     floor: number;
   } | null;
   positionEstimate?: PositionEstimate | null;
+  correctionDecision?: {
+    mode: 'hard_snap' | 'soft_blend' | 'reject';
+    applied: boolean;
+    reason: string;
+    candidateDistanceM: number;
+  };
+};
+
+export type CvScanMetadata = {
+  frameId?: string;
+  sequenceNumber?: number;
+  poseConfidence?: number;
+  velocityHintMps?: number;
+  devicePitchDeg?: number;
+  deviceRollDeg?: number;
+  estimatedPosition?: {
+    x: number;
+    y: number;
+    z?: number;
+    floor: number;
+  };
+  deviceHeading?: number;
 };
 
 function renderJpegFrame(
@@ -117,16 +146,32 @@ export function captureImageJpeg(
 export async function sendCvFrame(
   imagePayload: string,
   sessionId: string,
-  signal?: AbortSignal,
+  metadataOrSignal?: CvScanMetadata | AbortSignal,
+  signalArg?: AbortSignal,
 ): Promise<CvScanResponse> {
+  // Keep compatibility with existing call sites that pass AbortSignal as third argument.
+  const metadata =
+    metadataOrSignal instanceof AbortSignal || metadataOrSignal === undefined
+      ? undefined
+      : metadataOrSignal;
+  const signal =
+    metadataOrSignal instanceof AbortSignal ? metadataOrSignal : signalArg;
+
   const response = await fetch('/api/v1/cv/scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       session_id: sessionId,
       timestamp: Date.now(),
-      estimated_position: { x: 0, y: 0, floor: 1 },
+      estimated_position: metadata?.estimatedPosition ?? { x: 0, y: 0, z: 0, floor: 1 },
       image_payload: imagePayload,
+      device_heading: metadata?.deviceHeading,
+      pose_confidence: metadata?.poseConfidence,
+      velocity_hint_mps: metadata?.velocityHintMps,
+      device_pitch_deg: metadata?.devicePitchDeg,
+      device_roll_deg: metadata?.deviceRollDeg,
+      frame_id: metadata?.frameId,
+      sequence_number: metadata?.sequenceNumber,
     }),
     signal,
   });

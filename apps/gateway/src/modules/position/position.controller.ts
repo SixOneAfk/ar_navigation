@@ -64,6 +64,13 @@ export class PositionController {
         wifi: dto.wifi ?? [],
         cvMarkers: dto.cvMarkers ?? [],
         timestamp: dto.timestamp,
+        estimatedPose: dto.estimatedPose,
+        poseConfidence: dto.poseConfidence,
+        frameId: dto.frameId,
+        sequenceNumber: dto.sequenceNumber,
+        velocityHintMps: dto.velocityHintMps,
+        devicePitchDeg: dto.devicePitchDeg,
+        deviceRollDeg: dto.deviceRollDeg,
       });
 
       console.log('[GATEWAY:PositionController] ✓ Got estimate from gRPC:', {

@@ -78,6 +78,8 @@ class RecalibrateTests(unittest.TestCase):
         self.assertEqual(response.matched_node_id, "N201")
         self.assertEqual(response.detected_text, "ROOM201")
         self.assertEqual(response.marker_position, main.MARKER_COORDINATES["N201"])
+        self.assertGreaterEqual(len(response.ocr_candidates), 1)
+        self.assertIsNone(response.failure_reason)
 
 
 if __name__ == "__main__":

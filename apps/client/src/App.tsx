@@ -2,6 +2,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { ModelScene } from './components/ModelScene';
 import { CameraPermissionPanel } from './components/CameraPermissionPanel';
+import { CompassWidget } from './components/CompassWidget';
 import { GyroCamera } from './components/GyroCamera';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
@@ -13,6 +14,7 @@ const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
 const DEFAULT_STEP_STRIDE_METERS = 0.65;
+const DEFAULT_VERTICAL_DEBUG_ENABLED = false;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
 
@@ -46,6 +48,8 @@ export default function App() {
   const [stepStrideMeters, setStepStrideMeters] = useState(DEFAULT_STEP_STRIDE_METERS);
   const [moveMode, setMoveMode] = useState<MoveMode>('walk');
   const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
+  const [verticalAxis, setVerticalAxis] = useState(0);
+  const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
 
   const accelConfig = useMemo(
     () => ({
@@ -56,7 +60,7 @@ export default function App() {
     [rawDeadband, stepDebounceMs, stepThreshold],
   );
 
-  const { state: gyroState, orientationRef, motionRef, requestPermission } = useGyroscope();
+  const { state: gyroState, orientationRef, headingRef, motionRef, requestPermission } = useGyroscope();
   const {
     state: accelState,
     sample: accelSample,
@@ -75,6 +79,7 @@ export default function App() {
 
   useEffect(() => {
     setJoystick({ x: 0, y: 0 });
+    setVerticalAxis(0);
   }, [moveMode]);
 
   const format = (value: number) => value.toFixed(3);
@@ -120,6 +125,12 @@ export default function App() {
           Tune
         </button>
       </div>
+
+      <CompassWidget
+        headingRef={headingRef}
+        orientationRef={orientationRef}
+        enabled={gyroActive}
+      />
 
       {openPanel === 'gyro' && (
         <div className="gyro-panel">
@@ -168,6 +179,45 @@ export default function App() {
               <span className="gyro-panel__joystick-readout">
                 X {joystick.x.toFixed(2)} / Y {joystick.y.toFixed(2)}
               </span>
+
+              <label className="gyro-panel__toggle" htmlFor="debug-vertical-toggle">
+                <input
+                  id="debug-vertical-toggle"
+                  type="checkbox"
+                  checked={debugVerticalEnabled}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    setDebugVerticalEnabled(next);
+                    if (!next) {
+                      setVerticalAxis(0);
+                    }
+                  }}
+                />
+                Enable debug up/down
+              </label>
+
+              {debugVerticalEnabled && (
+                <div className="gyro-panel__vertical-controls" aria-label="Vertical movement controls">
+                  <button
+                    type="button"
+                    className="gyro-panel__btn gyro-panel__btn--secondary"
+                    onPointerDown={() => setVerticalAxis(1)}
+                    onPointerUp={() => setVerticalAxis(0)}
+                    onPointerLeave={() => setVerticalAxis(0)}
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    className="gyro-panel__btn gyro-panel__btn--secondary"
+                    onPointerDown={() => setVerticalAxis(-1)}
+                    onPointerUp={() => setVerticalAxis(0)}
+                    onPointerLeave={() => setVerticalAxis(0)}
+                  >
+                    Down
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -357,12 +407,15 @@ export default function App() {
         {/* Gyro rotation applied inside the Canvas each frame */}
         <GyroCamera
           orientationRef={orientationRef}
+          headingRef={headingRef}
           motionRef={motionRef}
           active={cameraActive}
           moveMode={moveMode}
           joystick={joystick}
           stepCount={stepCount}
           stepStrideMeters={stepStrideMeters}
+          verticalAxis={verticalAxis}
+          debugVerticalEnabled={debugVerticalEnabled}
           sensitivity={1}
         />
 
