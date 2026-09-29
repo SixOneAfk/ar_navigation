@@ -18,7 +18,10 @@ export class GraphService {
     console.log('[CORE-BACKEND:GraphService] Initialized');
   }
 
-  getGraphSchema(): { nodeSchema: Record<string, unknown>; edgeSchema: Record<string, unknown> } {
+  getGraphSchema(): {
+    nodeSchema: Record<string, unknown>;
+    edgeSchema: Record<string, unknown>;
+  } {
     return {
       nodeSchema: {
         type: 'object',
@@ -37,14 +40,23 @@ export class GraphService {
         properties: {
           from: { type: 'string' },
           to: { type: 'string' },
-          edgeType: { type: 'string', enum: ['corridor', 'stairs', 'elevator'] },
+          edgeType: {
+            type: 'string',
+            enum: ['corridor', 'stairs', 'elevator'],
+          },
         },
       },
     };
   }
 
-  async computeRoute(startNode: string, targetNode: string): Promise<PathResponse> {
-    console.log('[CORE-BACKEND:GraphService] computeRoute() called with:', { startNode, targetNode });
+  async computeRoute(
+    startNode: string,
+    targetNode: string,
+  ): Promise<PathResponse> {
+    console.log('[CORE-BACKEND:GraphService] computeRoute() called with:', {
+      startNode,
+      targetNode,
+    });
     try {
       await this.loadGraphSnapshot();
 
@@ -117,7 +129,11 @@ export class GraphService {
     return adjacency;
   }
 
-  private calculateEdgeWeight(fromNode: GraphNode, toNode: GraphNode, edgeType: GraphEdge['edgeType']): number {
+  private calculateEdgeWeight(
+    fromNode: GraphNode,
+    toNode: GraphNode,
+    edgeType: GraphEdge['edgeType'],
+  ): number {
     const dx = fromNode.x - toNode.x;
     const dy = fromNode.y - toNode.y;
     const dz = (fromNode.floor - toNode.floor) * FLOOR_HEIGHT_METERS;
@@ -182,21 +198,32 @@ export class GraphService {
       const neighbors = this.adjacency.get(current) ?? [];
 
       for (const neighbor of neighbors) {
-        const tentativeG = (gScore.get(current) ?? Number.POSITIVE_INFINITY) + neighbor.weight;
+        const tentativeG =
+          (gScore.get(current) ?? Number.POSITIVE_INFINITY) + neighbor.weight;
 
-        if (tentativeG < (gScore.get(neighbor.to) ?? Number.POSITIVE_INFINITY)) {
+        if (
+          tentativeG < (gScore.get(neighbor.to) ?? Number.POSITIVE_INFINITY)
+        ) {
           cameFrom.set(neighbor.to, current);
           gScore.set(neighbor.to, tentativeG);
-          fScore.set(neighbor.to, tentativeG + this.heuristic(neighbor.to, targetNode));
+          fScore.set(
+            neighbor.to,
+            tentativeG + this.heuristic(neighbor.to, targetNode),
+          );
           openSet.add(neighbor.to);
         }
       }
     }
 
-    throw new Error(`No valid path exists between ${startNode} and ${targetNode}`);
+    throw new Error(
+      `No valid path exists between ${startNode} and ${targetNode}`,
+    );
   }
 
-  private reconstructPath(cameFrom: Map<string, string>, current: string): string[] {
+  private reconstructPath(
+    cameFrom: Map<string, string>,
+    current: string,
+  ): string[] {
     const path = [current];
     let cursor = current;
 
@@ -212,9 +239,11 @@ export class GraphService {
     let total = 0;
 
     for (let index = 0; index < path.length - 1; index += 1) {
-      const from = path[index] as string;
-      const to = path[index + 1] as string;
-      const weight = (this.adjacency.get(from) ?? []).find((n) => n.to === to)?.weight;
+      const from = path[index];
+      const to = path[index + 1];
+      const weight = (this.adjacency.get(from) ?? []).find(
+        (n) => n.to === to,
+      )?.weight;
 
       if (weight === undefined) {
         throw new Error(`Broken edge in path between ${from} and ${to}`);

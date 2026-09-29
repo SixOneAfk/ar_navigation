@@ -15,6 +15,8 @@ type LogEntry = {
 
 const DEFAULT_THROTTLE_MS = 1000;
 const DEBUG_ENABLED = import.meta.env?.VITE_DEBUG_SENSORS === 'true';
+const TERMINAL_LOGGING_ENABLED =
+  import.meta.env?.DEV === true || import.meta.env?.VITE_NAVIGATION_TERMINAL_LOGS === 'true';
 
 function getTimeStamp() {
   return new Date().toLocaleTimeString('en-GB', {
@@ -38,6 +40,17 @@ function getSeverityRank(level: LogLevel) {
     default:
       return 20;
   }
+}
+
+function forwardNavigationLogToTerminal(entry: LogEntry) {
+  if (!TERMINAL_LOGGING_ENABLED || !entry.component.startsWith('Navigation')) return;
+
+  void fetch('/__navigation-terminal-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(entry),
+    keepalive: true,
+  }).catch(() => undefined);
 }
 
 class DebugLogger {
@@ -96,6 +109,8 @@ class DebugLogger {
     } else {
       console.info(formatted);
     }
+
+    forwardNavigationLogToTerminal(entry);
   }
 
   debug(component: string, message: string) {

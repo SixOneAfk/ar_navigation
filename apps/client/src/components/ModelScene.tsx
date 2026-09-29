@@ -1,11 +1,13 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Html, useGLTF } from '@react-three/drei';
 import { GroupProps } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { ModelSceneFrame } from '../navigation/navigationData';
 
 type ModelSceneProps = {
   modelPath: string;
   enableModel?: boolean;
+  onModelFrame?: (frame: ModelSceneFrame) => void;
 } & GroupProps;
 
 /**
@@ -32,10 +34,11 @@ type ModelSceneProps = {
 
 /**
  * Loads the corridor GLTF model at the scale exported by Blender.
- * The model is centered without changing its world dimensions.
+ * It is centered horizontally and anchored to its lowest modeled floor height.
  */
 function CorridorModel({
   modelPath,
+  onModelFrame,
   ...props
 }: ModelSceneProps) {
   const gltf = useGLTF(modelPath);
@@ -47,7 +50,51 @@ function CorridorModel({
   box.getSize(size);
   const center = new THREE.Vector3();
   box.getCenter(center);
-  const modelPosition: [number, number, number] = [-center.x, -center.y, -center.z];
+  const floorHeight = box.min.y;
+  const modelPosition: [number, number, number] = [-center.x, -floorHeight, -center.z];
+  const groupPosition = new THREE.Vector3();
+  if (Array.isArray(props.position)) {
+    groupPosition.fromArray(props.position as [number, number, number]);
+  } else if (typeof props.position === 'number') {
+    groupPosition.setScalar(props.position);
+  } else if (props.position instanceof THREE.Vector3) {
+    groupPosition.copy(props.position);
+  }
+
+  useEffect(() => {
+    onModelFrame?.({
+      center: { x: center.x, y: center.y, z: center.z },
+      floorHeight,
+      position: { x: groupPosition.x, y: groupPosition.y, z: groupPosition.z },
+      bounds: {
+        min: {
+          x: box.min.x - center.x + groupPosition.x,
+          y: box.min.y - floorHeight + groupPosition.y,
+          z: box.min.z - center.z + groupPosition.z,
+        },
+        max: {
+          x: box.max.x - center.x + groupPosition.x,
+          y: box.max.y - floorHeight + groupPosition.y,
+          z: box.max.z - center.z + groupPosition.z,
+        },
+      },
+    });
+  }, [
+    box.max.x,
+    box.max.y,
+    box.max.z,
+    box.min.x,
+    box.min.y,
+    box.min.z,
+    center.x,
+    center.y,
+    center.z,
+    floorHeight,
+    groupPosition.x,
+    groupPosition.y,
+    groupPosition.z,
+    onModelFrame,
+  ]);
 
   if (import.meta.env?.DEV) {
     console.debug(

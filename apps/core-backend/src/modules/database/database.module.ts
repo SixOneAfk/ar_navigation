@@ -8,6 +8,8 @@ import { DatabaseService } from './database.service';
 })
 export class DatabaseModule {
   constructor() {
-    console.log('[CORE-BACKEND:DatabaseModule] Initialized in fallback mode (no Prisma)');
+    console.log(
+      '[CORE-BACKEND:DatabaseModule] Initialized in fallback mode (no Prisma)',
+    );
   }
 }

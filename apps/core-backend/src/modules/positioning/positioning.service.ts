@@ -61,14 +61,17 @@ export class PositioningService {
   }
 
   estimatePosition(payload: EstimatePositionRequest): EstimatePositionResponse {
-    console.log('[CORE-BACKEND:PositioningService] estimatePosition() called with:', {
-      deviceId: payload.deviceId,
-      stepCount: payload.stepCount,
-      headingDeg: payload.headingDeg,
-      wifiBeaconsCount: payload.wifi?.length ?? 0,
-      cvMarkersCount: payload.cvMarkers?.length ?? 0,
-      timestamp: payload.timestamp,
-    });
+    console.log(
+      '[CORE-BACKEND:PositioningService] estimatePosition() called with:',
+      {
+        deviceId: payload.deviceId,
+        stepCount: payload.stepCount,
+        headingDeg: payload.headingDeg,
+        wifiBeaconsCount: payload.wifi?.length ?? 0,
+        cvMarkersCount: payload.cvMarkers?.length ?? 0,
+        timestamp: payload.timestamp,
+      },
+    );
 
     try {
       // Validate input
@@ -105,13 +108,16 @@ export class PositioningService {
         });
 
         if (!correctionDecision.accepted) {
-          console.warn('[CORE-BACKEND:PositioningService] Rejected CV correction candidate:', {
-            markerId: anchoredMarker.markerId,
-            reason: correctionDecision.reason,
-            candidateDistanceM: correctionDecision.candidateDistanceMeters,
-            frameId: payload.frameId,
-            sequenceNumber: payload.sequenceNumber,
-          });
+          console.warn(
+            '[CORE-BACKEND:PositioningService] Rejected CV correction candidate:',
+            {
+              markerId: anchoredMarker.markerId,
+              reason: correctionDecision.reason,
+              candidateDistanceM: correctionDecision.candidateDistanceMeters,
+              frameId: payload.frameId,
+              sequenceNumber: payload.sequenceNumber,
+            },
+          );
         }
 
         const fallbackPose = payload.estimatedPose ?? { x: 0, y: 0, z: 0 };
@@ -143,11 +149,14 @@ export class PositioningService {
           candidateDistanceM: correctionDecision.candidateDistanceMeters,
         };
 
-        console.log('[CORE-BACKEND:PositioningService] Using CV marker anchor for position:', {
-          markerId: anchoredMarker.markerId,
-          floor: anchoredMarker.floor,
-          ...anchoredResult,
-        });
+        console.log(
+          '[CORE-BACKEND:PositioningService] Using CV marker anchor for position:',
+          {
+            markerId: anchoredMarker.markerId,
+            floor: anchoredMarker.floor,
+            ...anchoredResult,
+          },
+        );
 
         return anchoredResult;
       }
@@ -177,25 +186,31 @@ export class PositioningService {
         candidateDistanceM: Number.POSITIVE_INFINITY,
       };
 
-      console.log('[CORE-BACKEND:PositioningService] ✓ Position estimate calculated:', {
-        x: result.x,
-        y: result.y,
-        z: result.z,
-        confidence: result.confidence,
-        source: result.source,
-      });
+      console.log(
+        '[CORE-BACKEND:PositioningService] ✓ Position estimate calculated:',
+        {
+          x: result.x,
+          y: result.y,
+          z: result.z,
+          confidence: result.confidence,
+          source: result.source,
+        },
+      );
 
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
-      console.error('[CORE-BACKEND:PositioningService] ✗ CRITICAL: Error in estimatePosition:', {
-        errorMessage: errorMsg,
-        errorStack: errorStack,
-        deviceId: payload.deviceId,
-        timestamp: payload.timestamp,
-        processedAt: new Date().toISOString(),
-      });
+      console.error(
+        '[CORE-BACKEND:PositioningService] ✗ CRITICAL: Error in estimatePosition:',
+        {
+          errorMessage: errorMsg,
+          errorStack: errorStack,
+          deviceId: payload.deviceId,
+          timestamp: payload.timestamp,
+          processedAt: new Date().toISOString(),
+        },
+      );
       throw error;
     }
   }

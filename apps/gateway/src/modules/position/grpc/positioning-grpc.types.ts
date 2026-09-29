@@ -46,5 +46,7 @@ export type EstimatePositionResponse = {
 };
 
 export type PositioningGrpcService = {
-  estimatePosition(data: EstimatePositionRequest): Promise<EstimatePositionResponse>;
+  estimatePosition(
+    data: EstimatePositionRequest,
+  ): Promise<EstimatePositionResponse>;
 };

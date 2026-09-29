@@ -12,6 +12,8 @@ console.log('[GATEWAY:AppModule] Loading AppModule...');
 })
 export class AppModule {
   constructor() {
-    console.log('[GATEWAY:AppModule] ✓ AppModule fully initialized with PositionModule, CvModule, WifiModule');
+    console.log(
+      '[GATEWAY:AppModule] ✓ AppModule fully initialized with PositionModule, CvModule, WifiModule',
+    );
   }
 }

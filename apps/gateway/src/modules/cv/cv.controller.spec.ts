@@ -21,7 +21,9 @@ describe('CvController', () => {
         candidateDistanceM: 1.4,
       }),
     };
-    controller = new CvController(positioningGrpcClient as PositioningGrpcClient);
+    controller = new CvController(
+      positioningGrpcClient as PositioningGrpcClient,
+    );
   });
 
   afterEach(() => {
@@ -63,10 +65,12 @@ describe('CvController', () => {
         sequenceNumber: 42,
         recalibration,
         markerPosition: recalibration.marker_position,
-        correctionDecision: expect.objectContaining({
+        correctionDecision: {
           mode: 'hard_snap',
           applied: true,
-        }),
+          reason: 'high_confidence_nearby_marker',
+          candidateDistanceM: 1.4,
+        },
       }),
     );
     expect(positioningGrpcClient.estimatePosition).toHaveBeenCalledWith(
@@ -90,10 +94,9 @@ describe('CvController', () => {
     expect(result).not.toHaveProperty('payload');
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const requestBody = JSON.parse(
-      fetchMock.mock.calls[0][1]?.body as string,
-    ) as Record<string, unknown>;
-    expect(requestBody).toMatchObject({
+    expect(
+      JSON.parse(fetchMock.mock.calls[0][1]?.body as string),
+    ).toMatchObject({
       session_id: 'phone-session',
       timestamp: 123,
       image_payload: 'data:image/jpeg;base64,abc',

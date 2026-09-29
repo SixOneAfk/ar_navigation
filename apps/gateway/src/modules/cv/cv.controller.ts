@@ -50,7 +50,12 @@ export class CvController {
     const normalized = {
       session_id: dto.session_id ?? dto.deviceId ?? 'unknown-session',
       timestamp: dto.timestamp ?? Date.now(),
-      estimated_position: dto.estimated_position ?? { x: 0, y: 0, z: 0, floor: 1 },
+      estimated_position: dto.estimated_position ?? {
+        x: 0,
+        y: 0,
+        z: 0,
+        floor: 1,
+      },
       image_payload: dto.image_payload ?? dto.frameBase64,
       device_heading: dto.device_heading,
       pose_confidence: dto.pose_confidence,
@@ -61,8 +66,14 @@ export class CvController {
       sequence_number: sequenceNumber,
     };
 
-    const lastKnownSequence = this.latestSequenceBySession.get(normalized.session_id);
-    if (sequenceNumber > 0 && lastKnownSequence !== undefined && sequenceNumber <= lastKnownSequence) {
+    const lastKnownSequence = this.latestSequenceBySession.get(
+      normalized.session_id,
+    );
+    if (
+      sequenceNumber > 0 &&
+      lastKnownSequence !== undefined &&
+      sequenceNumber <= lastKnownSequence
+    ) {
       return {
         status: 'accepted',
         source: 'cv-forwarder',
@@ -169,11 +180,17 @@ export class CvController {
       }
 
       const correctionDecision: CorrectionDecision = {
-        mode: (positionEstimate?.correctionMode as CorrectionDecision['mode']) ??
+        mode:
+          (positionEstimate?.correctionMode as CorrectionDecision['mode']) ??
           (recalibration.recalibrated ? 'soft_blend' : 'reject'),
-        applied: positionEstimate?.correctionApplied ?? Boolean(recalibration.recalibrated),
-        reason: positionEstimate?.decisionReason ??
-          (recalibration.recalibrated ? 'cv_recalibrated_marker_observed' : 'no_marker_match'),
+        applied:
+          positionEstimate?.correctionApplied ??
+          Boolean(recalibration.recalibrated),
+        reason:
+          positionEstimate?.decisionReason ??
+          (recalibration.recalibrated
+            ? 'cv_recalibrated_marker_observed'
+            : 'no_marker_match'),
         candidateDistanceM:
           positionEstimate?.candidateDistanceM ??
           (recalibration.recalibrated ? 0 : Number.POSITIVE_INFINITY),

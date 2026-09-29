@@ -4,12 +4,18 @@ import { ModelScene } from './components/ModelScene';
 import { CameraPermissionPanel } from './components/CameraPermissionPanel';
 import { CompassWidget } from './components/CompassWidget';
 import { GyroCamera } from './components/GyroCamera';
+import { NavigationStatus } from './components/NavigationStatus';
+import { NavigationTracker } from './components/NavigationTracker';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigation } from './navigation/useNavigation';
+import type { ModelSceneFrame } from './navigation/navigationData';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
+const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
+const MODEL_PATH = '/model.floor1-graph-test1.glb';
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
@@ -50,6 +56,8 @@ export default function App() {
   const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
   const [verticalAxis, setVerticalAxis] = useState(0);
   const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
+  const [modelFrame, setModelFrame] = useState<ModelSceneFrame | null>(null);
+  const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
 
   const accelConfig = useMemo(
     () => ({
@@ -85,6 +93,14 @@ export default function App() {
   const format = (value: number) => value.toFixed(3);
   const togglePanel = (panel: Exclude<PanelId, null>) => {
     setOpenPanel((current) => (current === panel ? null : panel));
+  };
+  const navigationStatusProps = {
+    buildingName: navigation.buildingName,
+    currentPointId: navigation.currentPointId,
+    debugSnapshot: navigation.debugSnapshot,
+    debugEnabled: navigation.debugEnabled,
+    loadError: navigation.loadError,
+    alignmentWarning: navigation.alignmentWarning,
   };
 
   return (
@@ -132,9 +148,15 @@ export default function App() {
         enabled={gyroActive}
       />
 
+      {openPanel !== 'gyro' && <NavigationStatus {...navigationStatusProps} />}
+
       {openPanel === 'gyro' && (
         <div className="gyro-panel">
           <h2 className="gyro-panel__title">Gyroscope</h2>
+          <NavigationStatus
+            {...navigationStatusProps}
+            className="navigation-status navigation-status--inline"
+          />
           <button
             type="button"
             className="panel-close-btn"
@@ -402,7 +424,18 @@ export default function App() {
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[8, 12, 8]} intensity={1.2} />
 
-        <ModelScene modelPath="/model.glb" enableModel={true} position={[0, 0, -4]} />
+        <ModelScene
+          modelPath={MODEL_PATH}
+          enableModel
+          position={MODEL_SCENE_POSITION}
+          onModelFrame={setModelFrame}
+        />
+
+        <NavigationTracker
+          initialPosition={navigation.initialPosition}
+          points={navigation.worldPoints}
+          onPlayerPosition={navigation.observePlayerPosition}
+        />
 
         {/* Gyro rotation applied inside the Canvas each frame */}
         <GyroCamera

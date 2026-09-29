@@ -9,7 +9,10 @@ export class WifiController {
 
   @Post('rssi')
   ingestRssi(@Body() dto: WifiRssiDto) {
-    console.log('[GATEWAY:WifiController] POST /rssi called with payload:', JSON.stringify(dto));
+    console.log(
+      '[GATEWAY:WifiController] POST /rssi called with payload:',
+      JSON.stringify(dto),
+    );
     try {
       const response = {
         status: 'accepted',
@@ -17,7 +20,10 @@ export class WifiController {
         receivedAt: new Date().toISOString(),
         payload: dto,
       };
-      console.log('[GATEWAY:WifiController] ✓ Returning response:', JSON.stringify(response));
+      console.log(
+        '[GATEWAY:WifiController] ✓ Returning response:',
+        JSON.stringify(response),
+      );
       return response;
     } catch (error) {
       console.error('[GATEWAY:WifiController] ✗ Error in POST /rssi:', {

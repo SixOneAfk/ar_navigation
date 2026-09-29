@@ -7,16 +7,24 @@ export class TrilaterationService {
   }
 
   estimatePositionFromRssi() {
-    console.log('[CORE-BACKEND:TrilaterationService] estimatePositionFromRssi() called');
+    console.log(
+      '[CORE-BACKEND:TrilaterationService] estimatePositionFromRssi() called',
+    );
     try {
       const result = { status: 'todo', module: 'trilateration' };
-      console.log('[CORE-BACKEND:TrilaterationService] ✓ Result:', JSON.stringify(result));
+      console.log(
+        '[CORE-BACKEND:TrilaterationService] ✓ Result:',
+        JSON.stringify(result),
+      );
       return result;
     } catch (error) {
-      console.error('[CORE-BACKEND:TrilaterationService] ✗ Error in estimatePositionFromRssi:', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
+      console.error(
+        '[CORE-BACKEND:TrilaterationService] ✗ Error in estimatePositionFromRssi:',
+        {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      );
       throw error;
     }
   }

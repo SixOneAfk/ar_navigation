@@ -13,7 +13,7 @@ describe('GraphService', () => {
       }),
     };
 
-    service = new GraphService(databaseService as DatabaseService);
+    service = new GraphService(databaseService);
   });
 
   it('returns graph schemas for nodes and edges', () => {
@@ -31,6 +31,8 @@ describe('GraphService', () => {
   });
 
   it('throws when node does not exist', async () => {
-    await expect(service.computeRoute('MISSING', 'N201')).rejects.toThrow('Node MISSING not found in graph');
+    await expect(service.computeRoute('MISSING', 'N201')).rejects.toThrow(
+      'Node MISSING not found in graph',
+    );
   });
 });

@@ -40,9 +40,13 @@ export class PositionCorrectionValidator {
     markerConfidence: number;
     headingDeg: number;
   }): CorrectionDecision {
-    const { estimatedPose, candidatePose, markerConfidence, headingDeg } = params;
+    const { estimatedPose, candidatePose, markerConfidence, headingDeg } =
+      params;
 
-    if (!isFiniteNumber(markerConfidence) || markerConfidence < MIN_OCR_CONFIDENCE) {
+    if (
+      !isFiniteNumber(markerConfidence) ||
+      markerConfidence < MIN_OCR_CONFIDENCE
+    ) {
       return {
         mode: 'reject',
         accepted: false,
@@ -62,7 +66,8 @@ export class PositionCorrectionValidator {
 
     if (!estimatedPose) {
       return {
-        mode: markerConfidence >= HARD_SNAP_CONFIDENCE ? 'hard_snap' : 'soft_blend',
+        mode:
+          markerConfidence >= HARD_SNAP_CONFIDENCE ? 'hard_snap' : 'soft_blend',
         accepted: true,
         reason: 'no_estimate_available',
         candidateDistanceMeters: 0,
@@ -83,7 +88,10 @@ export class PositionCorrectionValidator {
       };
     }
 
-    if (distance <= HARD_SNAP_RADIUS_METERS && markerConfidence >= HARD_SNAP_CONFIDENCE) {
+    if (
+      distance <= HARD_SNAP_RADIUS_METERS &&
+      markerConfidence >= HARD_SNAP_CONFIDENCE
+    ) {
       return {
         mode: 'hard_snap',
         accepted: true,

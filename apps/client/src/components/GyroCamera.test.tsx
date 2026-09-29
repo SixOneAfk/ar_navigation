@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
+import type { RefObject } from 'react';
 import { GyroCamera } from './GyroCamera';
 import * as THREE from 'three';
+import type { MotionData, Orientation } from '../hooks/useGyroscope';
 
 const camera = {
   position: new THREE.Vector3(0, 1.6, 3),
@@ -33,14 +35,18 @@ describe('GyroCamera', () => {
   });
 
   it('advances position from detected steps in walk mode', () => {
-    const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
-    const motionRef = { current: { x: 0, y: 0, z: 2, timestamp: 16 } };
+    const orientationRef: RefObject<Orientation> = {
+      current: { alpha: 0, beta: 0, gamma: 0 },
+    };
+    const motionRef: RefObject<MotionData> = {
+      current: { x: 0, y: 0, z: 2, timestamp: 16 },
+    };
     const startZ = camera.position.z;
 
     const view = render(
       <GyroCamera
-        orientationRef={orientationRef as any}
-        motionRef={motionRef as any}
+        orientationRef={orientationRef}
+        motionRef={motionRef}
         active
         moveMode="walk"
         stepCount={0}
@@ -50,8 +56,8 @@ describe('GyroCamera', () => {
 
     view.rerender(
       <GyroCamera
-        orientationRef={orientationRef as any}
-        motionRef={motionRef as any}
+        orientationRef={orientationRef}
+        motionRef={motionRef}
         active
         moveMode="walk"
         stepCount={1}
@@ -63,14 +69,18 @@ describe('GyroCamera', () => {
   });
 
   it('maps joystick up to camera-relative forward movement', () => {
-    const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
-    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
+    const orientationRef: RefObject<Orientation> = {
+      current: { alpha: 0, beta: 0, gamma: 0 },
+    };
+    const motionRef: RefObject<MotionData> = {
+      current: { x: 0, y: 0, z: 0, timestamp: 16 },
+    };
     const startZ = camera.position.z;
 
     render(
       <GyroCamera
-        orientationRef={orientationRef as any}
-        motionRef={motionRef as any}
+        orientationRef={orientationRef}
+        motionRef={motionRef}
         active
         moveMode="buttons"
         joystick={{ x: 0, y: 1 }}
@@ -81,14 +91,18 @@ describe('GyroCamera', () => {
   });
 
   it('keeps gyro mode orientation-only without tilt translation', () => {
-    const orientationRef = { current: { alpha: 0, beta: 42, gamma: 38 } };
-    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
+    const orientationRef: RefObject<Orientation> = {
+      current: { alpha: 0, beta: 42, gamma: 38 },
+    };
+    const motionRef: RefObject<MotionData> = {
+      current: { x: 0, y: 0, z: 0, timestamp: 16 },
+    };
     const start = camera.position.clone();
 
     render(
       <GyroCamera
-        orientationRef={orientationRef as any}
-        motionRef={motionRef as any}
+        orientationRef={orientationRef}
+        motionRef={motionRef}
         active
         moveMode="gyro"
       />,
@@ -100,14 +114,18 @@ describe('GyroCamera', () => {
   });
 
   it('moves vertically in buttons mode when debug vertical is enabled', () => {
-    const orientationRef = { current: { alpha: 0, beta: 0, gamma: 0 } };
-    const motionRef = { current: { x: 0, y: 0, z: 0, timestamp: 16 } };
+    const orientationRef: RefObject<Orientation> = {
+      current: { alpha: 0, beta: 0, gamma: 0 },
+    };
+    const motionRef: RefObject<MotionData> = {
+      current: { x: 0, y: 0, z: 0, timestamp: 16 },
+    };
     const startY = camera.position.y;
 
     render(
       <GyroCamera
-        orientationRef={orientationRef as any}
-        motionRef={motionRef as any}
+        orientationRef={orientationRef}
+        motionRef={motionRef}
         active
         moveMode="buttons"
         debugVerticalEnabled

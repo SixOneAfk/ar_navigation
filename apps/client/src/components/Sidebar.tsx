@@ -1,5 +1,7 @@
 import { type Dispatch, type PointerEvent as ReactPointerEvent, type SetStateAction } from 'react';
 import type { GyroState, MotionCalibration } from '../hooks/useGyroscope';
+import { NavigationStatus } from './NavigationStatus';
+import type { PlayerNavigationDebug } from '../navigation/useNavigation';
 
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 
@@ -85,6 +87,14 @@ type SidebarProps = {
     moveMode: MoveMode;
     lastSensorUpdate: number | null;
   };
+  navigationStatus?: {
+    buildingName: string | null;
+    currentPointId: string | null;
+    debugSnapshot: PlayerNavigationDebug | null;
+    debugEnabled: boolean;
+    loadError: string | null;
+    alignmentWarning: string | null;
+  };
 };
 
 /**
@@ -128,6 +138,7 @@ export function Sidebar({
   resetMotionCalibration,
   debugEnabled = false,
   debugStatus,
+  navigationStatus,
 }: SidebarProps) {
   return (
     <>
@@ -153,6 +164,13 @@ export function Sidebar({
         </div>
 
         <div className="sidebar__content">
+          {navigationStatus && (
+            <NavigationStatus
+              {...navigationStatus}
+              className="navigation-status navigation-status--inline"
+            />
+          )}
+
           {/* Sensor permission panel shown until the gyroscope is ready. */}
           {!gyroActive && (
             <section className="sidebar__panel">

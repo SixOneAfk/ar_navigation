@@ -9,6 +9,8 @@ console.log('[TrilaterationModule] Loading...');
 })
 export class TrilaterationModule {
   constructor() {
-    console.log('[TrilaterationModule] ✓ Initialized with TrilaterationService');
+    console.log(
+      '[TrilaterationModule] ✓ Initialized with TrilaterationService',
+    );
   }
 }
