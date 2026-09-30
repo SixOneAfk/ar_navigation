@@ -7,6 +7,7 @@ import { GyroCamera } from './components/GyroCamera';
 import { NavigationStatus } from './components/NavigationStatus';
 import { NavigationTracker } from './components/NavigationTracker';
 import { NavigationRouteLine } from './components/NavigationRouteLine';
+import { NavigationArrow } from './components/NavigationArrow';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
@@ -479,6 +480,14 @@ export default function App() {
         />
 
         <NavigationRouteLine route={navigation.activeRoute} points={navigation.worldPoints} />
+
+        <NavigationArrow
+          route={navigation.activeRoute}
+          currentPointId={navigation.currentPointId}
+          points={navigation.worldPoints}
+          headingDegrees={headingDegrees}
+          debugEnabled={navigation.debugEnabled}
+        />
 
         {/* Gyro rotation applied inside the Canvas each frame */}
         <GyroCamera
