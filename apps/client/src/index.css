@@ -82,6 +82,24 @@ body,
   font-size: 0.9rem;
 }
 
+.compass-widget__collapse-toggle,
+.navigation-status__collapse-toggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #1f2f47;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.compass-widget--collapsed {
+  width: auto;
+  min-width: 7rem;
+  padding: 0.55rem 0.7rem;
+}
+
 .compass-widget__dial {
   position: relative;
   width: 118px;
@@ -853,6 +871,69 @@ body,
   margin: 0.4rem 0 0;
   color: #9a302d;
   font-size: 0.74rem;
+}
+
+.navigation-status__route-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.navigation-status__route-control select,
+.navigation-status__route-control button {
+  min-width: 0;
+  border: 1px solid #c8d4e4;
+  border-radius: 6px;
+  padding: 0.28rem 0.4rem;
+  background: #fff;
+  color: #20324c;
+  font: inherit;
+}
+
+.navigation-status__route-control button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.navigation-status__route-control button {
+  cursor: pointer;
+}
+
+.navigation-status__route {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(145, 162, 191, 0.35);
+  color: #334864;
+}
+
+.navigation-status__route ol {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.navigation-status__route li {
+  margin-top: 0.12rem;
+}
+
+.navigation-status__route li[data-active='true'] {
+  color: #0e57cc;
+  font-weight: 700;
+}
+
+.navigation-status__raw-route {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(145, 162, 191, 0.35);
+  color: #60728c;
+  font-size: 0.72rem;
+}
+
+.navigation-status--collapsed {
+  width: auto;
+  min-width: 8.5rem;
+  padding: 0.55rem 0.7rem;
 }
 
 .navigation-status__debug {

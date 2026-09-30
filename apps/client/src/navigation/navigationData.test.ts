@@ -56,6 +56,21 @@ describe('navigation data', () => {
     expect(() => parseBuildingNavigation(JSON.stringify(duplicateFixture))).toThrow('Duplicate navigation point ID');
   });
 
+  it('keeps valid branches and reports invalid branch references without crashing', () => {
+    const navigation = parseBuildingNavigation(JSON.stringify({
+      ...navigationFixture,
+      branches: [
+        { from: 'test-node', to: 'test-node', distance: 1 },
+        { from: 'missing', to: 'test-node', distance: 1 },
+        { from: 'test-node', to: 'missing', distance: 1 },
+        { from: 'test-node', to: 'test-node', distance: 0 },
+      ],
+    }));
+
+    expect(navigation.branches).toEqual([{ from: 'test-node', to: 'test-node', distance: 1 }]);
+    expect(navigation.invalidBranches).toHaveLength(3);
+  });
+
   it('maps Blender X/Y through the GLB centered frame without changing scale', () => {
     const position = navigationPointToThreePosition(
       navigationFixture.points[0],

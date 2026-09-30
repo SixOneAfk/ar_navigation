@@ -9010,7 +9010,7 @@
             "y": -9.5637
         },
         {
-            "id": "P1285",
+            "id": "Student_apartment",
             "row": 19,
             "column": 21,
             "x": 13.857,
@@ -30200,7 +30200,7 @@
         },
         {
             "from": "P316",
-            "to": "P385",
+            "to": "Entrance",
             "distance": 1.4142
         },
         {
@@ -30210,7 +30210,7 @@
         },
         {
             "from": "P317",
-            "to": "P385",
+            "to": "Entrance",
             "distance": 1.0
         },
         {
@@ -30245,7 +30245,7 @@
         },
         {
             "from": "P318",
-            "to": "P385",
+            "to": "Entrance",
             "distance": 1.4142
         },
         {
@@ -31170,26 +31170,26 @@
         },
         {
             "from": "P384",
-            "to": "P385",
+            "to": "Entrance",
             "distance": 1.0
         },
         {
-            "from": "P385",
+            "from": "Entrance",
             "to": "P452",
             "distance": 1.0
         },
         {
-            "from": "P385",
+            "from": "Entrance",
             "to": "P386",
             "distance": 1.0
         },
         {
-            "from": "P385",
+            "from": "Entrance",
             "to": "P453",
             "distance": 1.4142
         },
         {
-            "from": "P385",
+            "from": "Entrance",
             "to": "P451",
             "distance": 1.4142
         },
@@ -45505,7 +45505,7 @@
         },
         {
             "from": "P1220",
-            "to": "P1285",
+            "to": "Student_apartment",
             "distance": 1.0
         },
         {
@@ -45535,7 +45535,7 @@
         },
         {
             "from": "P1221",
-            "to": "P1285",
+            "to": "Student_apartment",
             "distance": 1.4142
         },
         {
@@ -46565,21 +46565,21 @@
         },
         {
             "from": "P1284",
-            "to": "P1285",
+            "to": "Student_apartment",
             "distance": 1.0
         },
         {
-            "from": "P1285",
+            "from": "Student_apartment",
             "to": "P1343",
             "distance": 1.0
         },
         {
-            "from": "P1285",
+            "from": "Student_apartment",
             "to": "P1286",
             "distance": 1.0
         },
         {
-            "from": "P1285",
+            "from": "Student_apartment",
             "to": "P1344",
             "distance": 1.4142
         },

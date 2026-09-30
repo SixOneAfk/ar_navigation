@@ -10,6 +10,12 @@ export type NavigationPoint = {
   y: number;
 };
 
+export type NavigationBranch = {
+  from: string;
+  to: string;
+  distance: number;
+};
+
 export type BuildingNavigation = {
   building: string;
   grid: {
@@ -20,6 +26,8 @@ export type BuildingNavigation = {
     coordinate_system: { x: string; y: string };
   };
   points: NavigationPoint[];
+  branches: NavigationBranch[];
+  invalidBranches?: string[];
 };
 
 export type ModelSceneFrame = {
@@ -154,6 +162,32 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
     };
   });
 
+  const branchesValue = value.branches;
+  const invalidBranches: string[] = [];
+  const branches: NavigationBranch[] = [];
+  if (branchesValue !== undefined && !Array.isArray(branchesValue)) {
+    throw new Error('Navigation data branches must be an array.');
+  }
+  for (const [index, branchValue] of (branchesValue ?? []).entries()) {
+    const label = `branches[${index}]`;
+    if (!isRecord(branchValue)) {
+      invalidBranches.push(`${label}: branch must be an object`);
+      continue;
+    }
+    const from = branchValue.from;
+    const to = branchValue.to;
+    const distance = branchValue.distance;
+    const reasons: string[] = [];
+    if (typeof from !== 'string' || !ids.has(from)) reasons.push(`${String(from)} does not exist`);
+    if (typeof to !== 'string' || !ids.has(to)) reasons.push(`${String(to)} does not exist`);
+    if (typeof distance !== 'number' || !Number.isFinite(distance) || distance <= 0) reasons.push('distance must be a finite positive number');
+    if (reasons.length > 0) {
+      invalidBranches.push(`${from ?? 'UNKNOWN'} -> ${to ?? 'UNKNOWN'}: ${reasons.join('; ')}`);
+      continue;
+    }
+    branches.push({ from: from as string, to: to as string, distance: distance as number });
+  }
+
   return {
     building: value.building,
     grid: {
@@ -164,6 +198,8 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
       coordinate_system: { x: coordinateSystem.x, y: coordinateSystem.y },
     },
     points,
+    branches,
+    invalidBranches,
   };
 }
 

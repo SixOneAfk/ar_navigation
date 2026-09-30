@@ -5,6 +5,8 @@ type CompassWidgetProps = {
   headingRef: React.RefObject<HeadingData>;
   orientationRef: React.RefObject<Orientation>;
   enabled: boolean;
+  isOpen?: boolean;
+  onToggle?: () => void;
 };
 
 const EMPTY_HEADING: HeadingData = {
@@ -20,7 +22,7 @@ const EMPTY_HEADING: HeadingData = {
  * Lightweight overlay that polls the latest heading ref and renders
  * independent gyro and compass signals for real-time diagnostics.
  */
-export function CompassWidget({ headingRef, orientationRef, enabled }: CompassWidgetProps) {
+export function CompassWidget({ headingRef, orientationRef, enabled, isOpen = true, onToggle }: CompassWidgetProps) {
   const [heading, setHeading] = useState<HeadingData>(EMPTY_HEADING);
   const [rollDeg, setRollDeg] = useState(0);
   const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
@@ -61,9 +63,21 @@ export function CompassWidget({ headingRef, orientationRef, enabled }: CompassWi
   const clampedRoll = Math.max(-45, Math.min(45, calibratedRollDeg));
   const signedRollText = `${calibratedRollDeg >= 0 ? '+' : ''}${calibratedRollDeg.toFixed(1)} deg`;
 
+  if (!isOpen) {
+    return (
+      <section className="compass-widget compass-widget--collapsed" aria-label="Compass">
+        <button type="button" className="compass-widget__collapse-toggle" onClick={onToggle} aria-expanded={false}>
+          <span aria-hidden="true">▸</span> Compass
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="compass-widget" aria-live="polite" data-confidence={confidenceTone}>
-      <h3 className="compass-widget__title">Heading</h3>
+      <button type="button" className="compass-widget__collapse-toggle compass-widget__title" onClick={onToggle} aria-expanded={true}>
+        <span aria-hidden="true">▾</span> Compass
+      </button>
       <div className="compass-widget__dial" aria-label="Compass dial">
         <span className="compass-widget__north">N</span>
         <span className="compass-widget__east">E</span>
