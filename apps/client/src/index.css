@@ -351,17 +351,6 @@ body,
   flex-wrap: wrap;
 }
 
-.camera-panel__file-actions {
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.camera-panel__file-input {
-  display: none;
-}
-
 .camera-panel__btn {
   border: none;
   border-radius: 10px;
@@ -380,10 +369,6 @@ body,
 .camera-panel__btn--secondary {
   background: #e4eaf3;
   color: #23324a;
-}
-
-.camera-panel__btn--demo {
-  background: #0a7a4b;
 }
 
 .camera-panel__status {
@@ -407,29 +392,6 @@ body,
   padding: 0.65rem;
   border-radius: 10px;
   background: rgba(232, 238, 249, 0.85);
-}
-
-.camera-panel__preview {
-  margin: 0 0 0.65rem;
-}
-
-.camera-panel__preview img {
-  display: block;
-  width: 100%;
-  max-height: 150px;
-  object-fit: contain;
-  border-radius: 8px;
-  background: #fff;
-  border: 1px solid #ced8e6;
-}
-
-.camera-panel__preview figcaption {
-  margin-top: 0.3rem;
-  overflow: hidden;
-  color: #50627d;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .camera-panel__scan-status,

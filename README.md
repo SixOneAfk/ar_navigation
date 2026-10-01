@@ -69,5 +69,3 @@ but does not apply that position as a correction.
 The camera horizontal FOV defaults to 60 degrees and can be adjusted under
 `Structural diagnostics`. A calibrated device-specific FOV is required for
 reliable metric distance estimates.
-
-Uploaded and built-in demo images still use the OCR recalibration endpoint for landmark matching.
