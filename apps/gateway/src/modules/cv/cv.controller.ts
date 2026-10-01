@@ -24,6 +24,8 @@ type RecalibrationResult = {
   candidate_count: number;
   ocr_candidates?: Array<{ text: string; confidence: number }>;
   failure_reason?: string | null;
+  cv_horizon_roll_deg?: number | null;
+  cv_horizon_confidence?: number;
 };
 
 type CorrectionDecision = {

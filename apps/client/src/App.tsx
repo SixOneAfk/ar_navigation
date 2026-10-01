@@ -9,7 +9,7 @@ import { NavigationTracker } from './components/NavigationTracker';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from './navigation/useNavigation';
 import type { ModelSceneFrame } from './navigation/navigationData';
 
@@ -21,6 +21,10 @@ const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
 const DEFAULT_STEP_STRIDE_METERS = 0.65;
 const DEFAULT_VERTICAL_DEBUG_ENABLED = false;
+const CV_HORIZON_MIN_CONFIDENCE = 0.6;
+const CV_HORIZON_COOLDOWN_MS = 1800;
+const CV_HORIZON_MAX_APPLY_STEP_DEG = 5;
+const CV_HORIZON_MIN_APPLY_MAGNITUDE_DEG = 0.8;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
 
@@ -58,6 +62,8 @@ export default function App() {
   const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
   const [modelFrame, setModelFrame] = useState<ModelSceneFrame | null>(null);
   const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
+  const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
+  const lastCvHorizonAppliedAtRef = useRef(0);
 
   const accelConfig = useMemo(
     () => ({
@@ -103,9 +109,40 @@ export default function App() {
     alignmentWarning: navigation.alignmentWarning,
   };
 
+  const applyCvHorizonCorrection = ({
+    rollDeg,
+    confidence,
+  }: {
+    rollDeg: number;
+    confidence: number;
+  }) => {
+    if (!gyroActive) return;
+    if (!Number.isFinite(rollDeg) || !Number.isFinite(confidence)) return;
+    if (confidence < CV_HORIZON_MIN_CONFIDENCE) return;
+    if (Math.abs(rollDeg) < CV_HORIZON_MIN_APPLY_MAGNITUDE_DEG) return;
+
+    const now = Date.now();
+    if (now - lastCvHorizonAppliedAtRef.current < CV_HORIZON_COOLDOWN_MS) {
+      return;
+    }
+
+    // Confidence-gated bounded step prevents sudden jumps from noisy frame estimates.
+    const weightedStepDeg = Math.max(
+      -CV_HORIZON_MAX_APPLY_STEP_DEG,
+      Math.min(CV_HORIZON_MAX_APPLY_STEP_DEG, rollDeg * confidence),
+    );
+    setHorizonOffsetDeg((prev) => prev + weightedStepDeg);
+    lastCvHorizonAppliedAtRef.current = now;
+  };
+
   return (
     <div className="app-shell">
-      <CameraPermissionPanel isOpen={openPanel === 'camera'} onClose={() => setOpenPanel(null)} />
+      <CameraPermissionPanel
+        isOpen={openPanel === 'camera'}
+        onClose={() => setOpenPanel(null)}
+        onHorizonCorrectionResolved={applyCvHorizonCorrection}
+      />
+
 
       <div className="control-dock">
         <button
@@ -146,6 +183,9 @@ export default function App() {
         headingRef={headingRef}
         orientationRef={orientationRef}
         enabled={gyroActive}
+        horizonOffsetDeg={horizonOffsetDeg}
+        onCalibrateHorizon={(currentRollDeg) => setHorizonOffsetDeg(currentRollDeg)}
+        onResetHorizon={() => setHorizonOffsetDeg(0)}
       />
 
       {openPanel !== 'gyro' && <NavigationStatus {...navigationStatusProps} />}
@@ -429,6 +469,9 @@ export default function App() {
           enableModel
           position={MODEL_SCENE_POSITION}
           onModelFrame={setModelFrame}
+          orientationRef={orientationRef}
+          tiltEnabled={gyroActive}
+          horizonOffsetDeg={horizonOffsetDeg}
         />
 
         <NavigationTracker

@@ -1,5 +1,6 @@
 import base64
 from functools import lru_cache
+import math
 import re
 from typing import Any, Optional
 
@@ -78,6 +79,8 @@ class RecalibrateResponse(BaseModel):
     candidate_count: int
     ocr_candidates: list[dict[str, float | str]]
     failure_reason: Optional[str] = None
+    cv_horizon_roll_deg: Optional[float] = None
+    cv_horizon_confidence: float = 0.0
 
 
 @lru_cache(maxsize=1)
@@ -219,6 +222,68 @@ def _build_ranked_candidates(candidates: list[tuple[str, float]]) -> list[dict[s
     return ranked[:5]
 
 
+def _normalize_line_angle_deg(value: float) -> float:
+    normalized = value
+    while normalized <= -90:
+        normalized += 180
+    while normalized > 90:
+        normalized -= 180
+    return normalized
+
+
+def _estimate_horizon_roll_deg(image: np.ndarray) -> tuple[Optional[float], float]:
+    if cv2 is None:
+        return None, 0.0
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 60, 150)
+
+    height, width = gray.shape
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=70,
+        minLineLength=max(int(width * 0.22), 60),
+        maxLineGap=20,
+    )
+
+    if lines is None:
+        return None, 0.0
+
+    best_angle: Optional[float] = None
+    best_score = 0.0
+    best_length = 0.0
+
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        dx = float(x2 - x1)
+        dy = float(y2 - y1)
+        length = math.hypot(dx, dy)
+        if length < 1:
+            continue
+
+        angle = _normalize_line_angle_deg(math.degrees(math.atan2(dy, dx)))
+        if abs(angle) > 35:
+            continue
+
+        horizontal_weight = 1.0 - min(abs(angle) / 35.0, 1.0)
+        score = length * horizontal_weight
+        if score > best_score:
+            best_score = score
+            best_angle = angle
+            best_length = length
+
+    if best_angle is None:
+        return None, 0.0
+
+    length_score = min(best_length / max(width * 0.8, 1.0), 1.0)
+    angle_score = 1.0 - min(abs(best_angle) / 30.0, 1.0)
+    confidence = max(0.0, min(1.0, (0.65 * length_score) + (0.35 * angle_score)))
+    return round(float(best_angle), 3), round(float(confidence), 3)
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cv-service"}
@@ -227,6 +292,7 @@ def health_check() -> dict[str, str]:
 @app.post("/api/v1/recalibrate", response_model=RecalibrateResponse)
 def recalibrate_position(payload: RecalibrateRequest) -> RecalibrateResponse:
     image = _decode_image(payload.image_payload)
+    cv_horizon_roll_deg, cv_horizon_confidence = _estimate_horizon_roll_deg(image)
     processed = _preprocess_for_ocr(image)
     candidates = _ocr_candidates(processed)
     matched_node_id, detected_text, confidence = _match_node(candidates)
@@ -246,6 +312,8 @@ def recalibrate_position(payload: RecalibrateRequest) -> RecalibrateResponse:
         candidate_count=len(candidates),
         ocr_candidates=ranked_candidates,
         failure_reason=failure_reason,
+        cv_horizon_roll_deg=cv_horizon_roll_deg,
+        cv_horizon_confidence=cv_horizon_confidence,
     )
 
 

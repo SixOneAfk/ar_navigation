@@ -468,7 +468,9 @@ Implementation notes:
 ### 2026-09-22 - Scope Update (What is left next)
 
 Prioritized next implementation target:
-- [ ] Add model tilt from gyroscope values and align scene/model horizon to gyroscope horizon.
+- [x] Add model tilt from gyroscope values and align scene/model horizon to gyroscope horizon.
+- [x] Add CV-based dynamic horizon correction stage (line detection + confidence gating).
+- [ ] Add context-aware landmark disambiguation (floor/heading/region-aware ranking beyond current fuzzy match).
 
 Axis responsibility model for upcoming localization iteration:
 - Compass -> X/Z global orientation reference (north anchor).
@@ -477,6 +479,43 @@ Axis responsibility model for upcoming localization iteration:
 
 Future fusion rule:
 - Keep raw sensors independent and combine them intentionally in estimator logic.
+
+### 2026-09-28 - Batch 8 Completed (Model tilt + shared horizon calibration)
+
+Completed:
+- [x] Connected horizon calibration state to the app-level sensor pipeline (single source of truth).
+- [x] Reused the same calibrated roll for both UI horizon readout and 3D scene tilt.
+- [x] Added gyroscope-driven model tilt in `ModelScene` with smoothing and safety clamping.
+
+Implementation notes:
+- Files updated: `apps/client/src/App.tsx`, `apps/client/src/components/CompassWidget.tsx`, `apps/client/src/components/ModelScene.tsx`.
+- Tilt source: `orientation.gamma` (roll), calibrated by shared `horizonOffsetDeg`.
+- Stability policy: roll is clamped to +/-22 deg and interpolated each frame to reduce jitter.
+- Validation: client production build passes (`cd apps/client && npm run build`).
+
+Clear behavioral comment for this batch:
+- Gyroscope roll now visibly tilts the rendered scene/model horizon, while heading control remains independent (gyro yaw for control, compass still diagnostic).
+
+### 2026-09-28 - Batch 9 Completed (CV dynamic horizon correction stage)
+
+Completed:
+- [x] Added CV horizon-line estimation in the CV service using edge detection + Hough line candidates.
+- [x] Added confidence output for CV horizon estimate and propagated it through gateway/client response types.
+- [x] Added app-level confidence-gated correction updates to `horizonOffsetDeg` with cooldown and bounded step size.
+- [x] Added camera panel diagnostics for CV horizon angle/confidence to make correction behavior observable.
+
+Implementation notes:
+- Files updated: `apps/cv-service/main.py`, `apps/cv-service/test_main.py`, `apps/gateway/src/modules/cv/cv.controller.ts`, `apps/client/src/utils/cvFrame.ts`, `apps/client/src/components/CameraPermissionPanel.tsx`, `apps/client/src/App.tsx`.
+- CV line policy: accept near-horizontal lines, rank by length and horizontalness, return `cv_horizon_roll_deg` and `cv_horizon_confidence`.
+- Frontend gate policy: apply only when confidence >= 0.60, roll magnitude >= 0.8 deg, and cooldown elapsed; apply step is clamped to +/-5 deg and weighted by confidence.
+
+Validation notes:
+- Client production build: pass (`cd apps/client && npm run build`).
+- Gateway build: pass (`cd apps/gateway && npm run build`).
+- CV Python unit tests: blocked in current environment because `cv2` is missing (`ModuleNotFoundError: No module named 'cv2'`).
+
+Clear behavioral comment for this batch:
+- Dynamic horizon correction is now additive and safety-gated; manual/static calibration remains available, and noisy low-confidence CV frames do not override tilt alignment.
 2. Vertical movement path exists for debug/testing and is gated safely.
 3. CV detection can produce a correction candidate tied to a graph location.
 4. Position correction decisions are explainable and logged.

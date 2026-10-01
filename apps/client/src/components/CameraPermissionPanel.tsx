@@ -33,12 +33,17 @@ type CameraPermissionPanelProps = {
     floor: number;
     markerId: string;
   }) => void;
+  onHorizonCorrectionResolved?: (payload: {
+    rollDeg: number;
+    confidence: number;
+  }) => void;
 };
 
 export function CameraPermissionPanel({
   isOpen,
   onClose,
   onMarkerPositionResolved,
+  onHorizonCorrectionResolved,
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -132,6 +137,17 @@ export function CameraPermissionPanel({
         onMarkerPositionResolved?.({
           ...markerPosition,
           markerId: response.recalibration.matched_node_id,
+        });
+      }
+      if (
+        typeof response.recalibration.cv_horizon_roll_deg === 'number' &&
+        Number.isFinite(response.recalibration.cv_horizon_roll_deg) &&
+        typeof response.recalibration.cv_horizon_confidence === 'number' &&
+        Number.isFinite(response.recalibration.cv_horizon_confidence)
+      ) {
+        onHorizonCorrectionResolved?.({
+          rollDeg: response.recalibration.cv_horizon_roll_deg,
+          confidence: response.recalibration.cv_horizon_confidence,
         });
       }
       setFramesProcessed((current) => current + 1);
@@ -497,6 +513,22 @@ export function CameraPermissionPanel({
                         {scanEnvelope?.correctionDecision?.candidateDistanceM === undefined
                           ? 'N/A'
                           : `${scanEnvelope.correctionDecision.candidateDistanceM.toFixed(2)} m`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>CV Horizon</dt>
+                      <dd>
+                        {typeof scanResult.cv_horizon_roll_deg === 'number'
+                          ? `${scanResult.cv_horizon_roll_deg.toFixed(1)} deg`
+                          : 'N/A'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>CV Horizon Conf</dt>
+                      <dd>
+                        {typeof scanResult.cv_horizon_confidence === 'number'
+                          ? `${Math.round(scanResult.cv_horizon_confidence * 100)}%`
+                          : 'N/A'}
                       </dd>
                     </div>
                   </dl>

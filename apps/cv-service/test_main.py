@@ -63,8 +63,13 @@ class EasyOcrCacheTests(unittest.TestCase):
 
 
 class RecalibrateTests(unittest.TestCase):
+    @patch.object(main, "_estimate_horizon_roll_deg", return_value=(4.2, 0.81))
     @patch.object(main, "_ocr_candidates", return_value=[("ROOM 201", 0.95)])
-    def test_recalibrate_returns_matching_node(self, _mock_ocr: object) -> None:
+    def test_recalibrate_returns_matching_node(
+        self,
+        _mock_ocr: object,
+        _mock_horizon: object,
+    ) -> None:
         request = main.RecalibrateRequest(
             session_id="test-session",
             timestamp=1,
@@ -80,6 +85,8 @@ class RecalibrateTests(unittest.TestCase):
         self.assertEqual(response.marker_position, main.MARKER_COORDINATES["N201"])
         self.assertGreaterEqual(len(response.ocr_candidates), 1)
         self.assertIsNone(response.failure_reason)
+        self.assertEqual(response.cv_horizon_roll_deg, 4.2)
+        self.assertEqual(response.cv_horizon_confidence, 0.81)
 
 
 if __name__ == "__main__":

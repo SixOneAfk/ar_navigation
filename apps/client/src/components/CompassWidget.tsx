@@ -5,6 +5,9 @@ type CompassWidgetProps = {
   headingRef: React.RefObject<HeadingData>;
   orientationRef: React.RefObject<Orientation>;
   enabled: boolean;
+  horizonOffsetDeg: number;
+  onCalibrateHorizon: (currentRollDeg: number) => void;
+  onResetHorizon: () => void;
 };
 
 const EMPTY_HEADING: HeadingData = {
@@ -20,10 +23,16 @@ const EMPTY_HEADING: HeadingData = {
  * Lightweight overlay that polls the latest heading ref and renders
  * independent gyro and compass signals for real-time diagnostics.
  */
-export function CompassWidget({ headingRef, orientationRef, enabled }: CompassWidgetProps) {
+export function CompassWidget({
+  headingRef,
+  orientationRef,
+  enabled,
+  horizonOffsetDeg,
+  onCalibrateHorizon,
+  onResetHorizon,
+}: CompassWidgetProps) {
   const [heading, setHeading] = useState<HeadingData>(EMPTY_HEADING);
   const [rollDeg, setRollDeg] = useState(0);
-  const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -107,7 +116,7 @@ export function CompassWidget({ headingRef, orientationRef, enabled }: CompassWi
           <button
             type="button"
             className="horizon-widget__btn"
-            onClick={() => setHorizonOffsetDeg(rollDeg)}
+            onClick={() => onCalibrateHorizon(rollDeg)}
             disabled={!enabled}
           >
             Calibrate 0 deg
@@ -115,7 +124,7 @@ export function CompassWidget({ headingRef, orientationRef, enabled }: CompassWi
           <button
             type="button"
             className="horizon-widget__btn horizon-widget__btn--secondary"
-            onClick={() => setHorizonOffsetDeg(0)}
+            onClick={onResetHorizon}
           >
             Reset
           </button>

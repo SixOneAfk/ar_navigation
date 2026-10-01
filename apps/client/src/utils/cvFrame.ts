@@ -20,6 +20,8 @@ export type RecalibrationResult = {
     confidence: number;
   }>;
   failure_reason?: string | null;
+  cv_horizon_roll_deg?: number | null;
+  cv_horizon_confidence?: number;
 };
 
 export type PositionEstimate = {
