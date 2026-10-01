@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { HeadingData, MotionData, Orientation } from '../hooks/useGyroscope';
 import type { JoystickValue } from './VirtualJoystick';
 import { createDebugLogger } from '../utils/debugLogger';
+import type { CameraPoseSnapshot } from '../utils/wallReferences';
 
 /** One Three.js world unit represents one real-world meter. */
 export const DEFAULT_MOVEMENT_SPEED_MPS = 1.5;
@@ -53,7 +54,7 @@ type GyroCameraProps = {
   movementSpeedMetersPerSecond?: number;
   calibrationTarget?: { x: number; y: number; z: number };
   calibrationMoveActive?: boolean;
-  onPoseChange?: (position: { x: number; y: number; z: number }) => void;
+  onPoseChange?: (pose: CameraPoseSnapshot) => void;
   onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
 
@@ -239,7 +240,23 @@ export function GyroCamera({
       z: motion?.z ?? 0,
     });
 
-    onPoseChange?.({ x: camera.position.x, y: camera.position.y, z: camera.position.z });
+    onPoseChange?.({
+      position: {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      },
+      forward: {
+        x: moveDirection.current.x,
+        y: moveDirection.current.y,
+        z: moveDirection.current.z,
+      },
+      right: {
+        x: strafeDirection.current.x,
+        y: strafeDirection.current.y,
+        z: strafeDirection.current.z,
+      },
+    });
   });
 
   return null;

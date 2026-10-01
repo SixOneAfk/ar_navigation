@@ -34,9 +34,19 @@ To run the client and NestJS services without the Python CV service:
 npm run start:dev:all
 ```
 
-## Model Asset
+## Model Assets
 
-The client looks for a 3D corridor model at `apps/client/public/model.glb`.
+The active building model is `apps/client/public/model.floor1-graph-test1.glb`.
+The matching wall catalog is `apps/client/public/wall_references.json`.
+
+Regenerate the catalog after replacing the GLB:
+
+```bash
+cd apps/cv-service
+.venv/bin/python extract_wall_references.py \
+  ../client/public/model.floor1-graph-test1.glb \
+  ../client/public/wall_references.json
+```
 
 ## Main API Endpoints
 
@@ -49,5 +59,15 @@ The client looks for a 3D corridor model at `apps/client/public/model.glb`.
 - CV structural-line API: `POST /api/v1/structural-lines`
 
 When camera access is enabled, the client sends centered 640x480 JPEG frames through the Gateway at up to five frames per second. The FastAPI service detects the floor-wall boundary and estimates camera roll without running OCR. The client draws the detected boundary over the live video and applies only stable, confidence-gated roll corrections to the Three.js camera.
+
+For diagnostic position estimation, the client selects the most likely visible
+wall from the catalog using the current navigation pose. FastAPI detects the
+floor edge plus the other three wall edges and solves the planar camera pose.
+The UI shows the CV position and its deviation from the navigation/PDR position,
+but does not apply that position as a correction.
+
+The camera horizontal FOV defaults to 60 degrees and can be adjusted under
+`Structural diagnostics`. A calibrated device-specific FOV is required for
+reliable metric distance estimates.
 
 Uploaded and built-in demo images still use the OCR recalibration endpoint for landmark matching.

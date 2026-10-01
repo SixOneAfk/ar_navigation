@@ -129,6 +129,25 @@ describe('CvController', () => {
       timestamp: 123,
       image_payload: 'data:image/jpeg;base64,abc',
       device_roll_deg: 2.5,
+      estimated_position: { x: 1, y: 1.6, z: 2 },
+      camera_intrinsics: {
+        fx: 554.256,
+        fy: 554.256,
+        cx: 320,
+        cy: 240,
+        distortion: [0, 0, 0, 0, 0],
+      },
+      wall_reference: {
+        id: 'wall-0001',
+        corners: [
+          { x: -2, y: 3, z: -5 },
+          { x: 2, y: 3, z: -5 },
+          { x: 2, y: 0, z: -5 },
+          { x: -2, y: 0, z: -5 },
+        ],
+      },
+      reference_confidence: 0.82,
+      intrinsics_confidence: 0.35,
       frame_id: 'structural-7',
       sequence_number: 7,
     });
@@ -152,6 +171,25 @@ describe('CvController', () => {
       timestamp: 123,
       image_payload: 'data:image/jpeg;base64,abc',
       device_roll_deg: 2.5,
+      estimated_position: { x: 1, y: 1.6, z: 2 },
+      camera_intrinsics: {
+        fx: 554.256,
+        fy: 554.256,
+        cx: 320,
+        cy: 240,
+        distortion: [0, 0, 0, 0, 0],
+      },
+      wall_reference: {
+        id: 'wall-0001',
+        corners: [
+          { x: -2, y: 3, z: -5 },
+          { x: 2, y: 3, z: -5 },
+          { x: 2, y: 0, z: -5 },
+          { x: -2, y: 0, z: -5 },
+        ],
+      },
+      reference_confidence: 0.82,
+      intrinsics_confidence: 0.35,
     });
   });
 

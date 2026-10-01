@@ -3,6 +3,7 @@ import {
   CV_FRAME_HEIGHT,
   CV_FRAME_WIDTH,
   type NormalizedLine,
+  type WallOutline,
   type StructuralLinesResult,
 } from '../utils/cvFrame';
 
@@ -69,6 +70,47 @@ function interpolateLine(
     y2: current.y2 + ((target.y2 - current.y2) * amount),
   };
 }
+function interpolatePoint(
+  current: Point,
+  target: Point,
+  amount: number,
+): Point {
+  return {
+    x: current.x + ((target.x - current.x) * amount),
+    y: current.y + ((target.y - current.y) * amount),
+  };
+}
+
+function interpolateWallOutline(
+  current: WallOutline,
+  target: WallOutline,
+  amount: number,
+): WallOutline {
+  return {
+    top_left: interpolatePoint(current.top_left, target.top_left, amount),
+    top_right: interpolatePoint(current.top_right, target.top_right, amount),
+    bottom_right: interpolatePoint(
+      current.bottom_right,
+      target.bottom_right,
+      amount,
+    ),
+    bottom_left: interpolatePoint(
+      current.bottom_left,
+      target.bottom_left,
+      amount,
+    ),
+  };
+}
+
+export function wallOutlineSegments(
+  outline: WallOutline,
+): Array<[Point, Point]> {
+  return [
+    [outline.top_left, outline.top_right],
+    [outline.top_left, outline.bottom_left],
+    [outline.top_right, outline.bottom_right],
+  ];
+}
 
 function confidenceColor(confidence: number): string {
   if (confidence >= 0.75) return '#24e88b';
@@ -86,6 +128,9 @@ export function StructuralLineOverlay({
   const currentRef = useRef<NormalizedLine | null>(null);
   const confidenceRef = useRef(0);
   const lastDetectionAtRef = useRef(0);
+  const wallTargetRef = useRef<WallOutline | null>(null);
+  const wallCurrentRef = useRef<WallOutline | null>(null);
+  const wallConfidenceRef = useRef(0);
 
   useEffect(() => {
     if (active && result?.detected && result.floor_boundary) {
@@ -95,10 +140,19 @@ export function StructuralLineOverlay({
       if (!currentRef.current) {
         currentRef.current = result.floor_boundary;
       }
-      return;
+    } else {
+      targetRef.current = null;
     }
 
-    targetRef.current = null;
+    if (active && result?.wall_outline) {
+      wallTargetRef.current = result.wall_outline;
+      wallConfidenceRef.current = result.wall_confidence;
+      if (!wallCurrentRef.current) {
+        wallCurrentRef.current = result.wall_outline;
+      }
+    } else {
+      wallTargetRef.current = null;
+    }
   }, [active, result]);
 
   useEffect(() => {
@@ -135,23 +189,24 @@ export function StructuralLineOverlay({
       const target = targetRef.current;
       const sourceWidth = video.videoWidth;
       const sourceHeight = video.videoHeight;
-      if (
+      const canDraw = (
         active
-        && target
         && sourceWidth > 0
         && sourceHeight > 0
         && viewportWidth > 0
         && viewportHeight > 0
-      ) {
-        const deltaMs = Math.min(now - previousFrameAt, 100);
-        const smoothing = 1 - Math.exp(-deltaMs / 90);
+      );
+      const deltaMs = Math.min(now - previousFrameAt, 100);
+      const smoothing = 1 - Math.exp(-deltaMs / 90);
+      const viewport = { width: viewportWidth, height: viewportHeight };
+      const source = { width: sourceWidth, height: sourceHeight };
+
+      if (canDraw && target) {
         currentRef.current = currentRef.current
           ? interpolateLine(currentRef.current, target, smoothing)
           : target;
 
         const line = currentRef.current;
-        const viewport = { width: viewportWidth, height: viewportHeight };
-        const source = { width: sourceWidth, height: sourceHeight };
         const start = mapCapturedPointToCover(
           { x: line.x1, y: line.y1 },
           source,
@@ -189,6 +244,74 @@ export function StructuralLineOverlay({
         context.fillText(label, labelX, labelY);
         context.restore();
       }
+      const wallTarget = wallTargetRef.current;
+      if (canDraw && wallTarget) {
+        wallCurrentRef.current = wallCurrentRef.current
+          ? interpolateWallOutline(
+            wallCurrentRef.current,
+            wallTarget,
+            smoothing,
+          )
+          : wallTarget;
+        const wallOutline = wallCurrentRef.current;
+        const wallColor = '#35c8ff';
+        const mappedOutline: WallOutline = {
+          top_left: mapCapturedPointToCover(
+            wallOutline.top_left,
+            source,
+            viewport,
+          ),
+          top_right: mapCapturedPointToCover(
+            wallOutline.top_right,
+            source,
+            viewport,
+          ),
+          bottom_right: mapCapturedPointToCover(
+            wallOutline.bottom_right,
+            source,
+            viewport,
+          ),
+          bottom_left: mapCapturedPointToCover(
+            wallOutline.bottom_left,
+            source,
+            viewport,
+          ),
+        };
+
+        context.save();
+        context.strokeStyle = wallColor;
+        context.lineWidth = 3;
+        context.lineCap = 'round';
+        context.shadowColor = 'rgba(0, 0, 0, 0.7)';
+        context.shadowBlur = 6;
+        context.beginPath();
+        for (const [edgeStart, edgeEnd] of wallOutlineSegments(mappedOutline)) {
+          context.moveTo(edgeStart.x, edgeStart.y);
+          context.lineTo(edgeEnd.x, edgeEnd.y);
+        }
+        context.stroke();
+
+        const wallLabelX = Math.max(
+          8,
+          Math.min(viewportWidth - 150, mappedOutline.top_left.x),
+        );
+        const wallLabelY = Math.max(
+          22,
+          Math.min(viewportHeight - 8, mappedOutline.top_left.y - 10),
+        );
+        context.shadowBlur = 0;
+        context.fillStyle = 'rgba(8, 18, 31, 0.82)';
+        context.fillRect(wallLabelX - 5, wallLabelY - 16, 146, 22);
+        context.fillStyle = wallColor;
+        context.font = '600 12px Segoe UI, sans-serif';
+        context.fillText(
+          `Wall outline ${Math.round(wallConfidenceRef.current * 100)}%`,
+          wallLabelX,
+          wallLabelY,
+        );
+        context.restore();
+      }
+
 
       previousFrameAt = now;
       animationFrame = requestAnimationFrame(draw);

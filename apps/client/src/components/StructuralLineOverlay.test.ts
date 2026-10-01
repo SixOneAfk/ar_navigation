@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { mapCapturedPointToCover } from './StructuralLineOverlay';
+import {
+  mapCapturedPointToCover,
+  wallOutlineSegments,
+} from './StructuralLineOverlay';
 
 describe('mapCapturedPointToCover', () => {
   it('maps the 4:3 capture crop back onto a 16:9 video', () => {
@@ -53,5 +56,21 @@ describe('mapCapturedPointToCover', () => {
     expect(left.x).toBeCloseTo(-66.667, 2);
     expect(right.x).toBeCloseTo(466.667, 2);
     expect(left.y).toBeCloseTo(200);
+  });
+});
+describe('wallOutlineSegments', () => {
+  it('returns only the top, left, and right wall edges', () => {
+    const outline = {
+      top_left: { x: 0.2, y: 0.2 },
+      top_right: { x: 0.8, y: 0.2 },
+      bottom_right: { x: 0.9, y: 0.8 },
+      bottom_left: { x: 0.1, y: 0.8 },
+    };
+
+    expect(wallOutlineSegments(outline)).toEqual([
+      [outline.top_left, outline.top_right],
+      [outline.top_left, outline.bottom_left],
+      [outline.top_right, outline.bottom_right],
+    ]);
   });
 });

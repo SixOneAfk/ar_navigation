@@ -12,6 +12,12 @@ import {
   sendStructuralLineFrame,
 } from '../utils/cvFrame';
 import { StructuralLineOverlay } from './StructuralLineOverlay';
+import type { ModelSceneFrame } from '../navigation/navigationData';
+import {
+  selectWallReference,
+  type CameraPoseSnapshot,
+  type WallReference,
+} from '../utils/wallReferences';
 
 type CameraState =
   | 'idle'
@@ -26,6 +32,31 @@ type ScanState = 'idle' | 'sending' | 'success' | 'error';
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const DEMO_IMAGE_URL = '/demo-room-101.svg';
 const MIN_ROLL_CONFIDENCE = 0.65;
+
+function poseFailureMessage(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'wall_outline_not_detected':
+      return 'Keep the complete wall visible, including its top and both sides.';
+    case 'wall_reference_not_selected':
+      return 'No model wall matches the current navigation view.';
+    case 'camera_intrinsics_not_available':
+      return 'Camera calibration is unavailable.';
+    case 'estimated_position_not_available':
+      return 'The navigation position is unavailable.';
+    case 'wall_reference_requires_four_corners':
+      return 'The selected model wall has incomplete geometry.';
+    case 'wall_reference_is_not_planar':
+      return 'The selected model wall is not planar.';
+    case 'pose_solution_behind_camera':
+    case 'pose_solution_not_found':
+    case 'pose_solver_failed':
+      return 'No physically valid camera position was found.';
+    default:
+      return reason
+        ? reason.split('_').join(' ')
+        : 'Waiting for a complete wall outline.';
+  }
+}
 
 type CameraPermissionPanelProps = {
   isOpen: boolean;
@@ -42,6 +73,10 @@ type CameraPermissionPanelProps = {
     cameraRollDeg: number;
     confidence: number;
   }) => void;
+  modelFrame?: ModelSceneFrame | null;
+  cameraPoseRef?: RefObject<CameraPoseSnapshot>;
+  wallReferences?: WallReference[];
+  wallReferenceError?: string | null;
 };
 
 export function CameraPermissionPanel({
@@ -50,6 +85,10 @@ export function CameraPermissionPanel({
   onMarkerPositionResolved,
   orientationRef,
   onHorizonCorrectionResolved,
+  modelFrame,
+  cameraPoseRef,
+  wallReferences = [],
+  wallReferenceError = null,
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -77,10 +116,20 @@ export function CameraPermissionPanel({
   const [framePreview, setFramePreview] = useState<string | null>(null);
   const [frameLabel, setFrameLabel] = useState('');
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
+  const [horizontalFovDeg, setHorizontalFovDeg] = useState(60);
 
   const confidencePercent = scanResult
     ? Math.round(scanResult.confidence * 100)
     : 0;
+  const diagnosticPose = structuralResult?.pose_estimate ?? null;
+  const navigationPosition = diagnosticPose
+    ? {
+        x: diagnosticPose.position.x - diagnosticPose.delta.x,
+        y: diagnosticPose.position.y - diagnosticPose.delta.y,
+        z: diagnosticPose.position.z - diagnosticPose.delta.z,
+      }
+    : null;
+
 
   useEffect(() => {
     return () => {
@@ -232,11 +281,27 @@ export function CameraPermissionPanel({
     abortControllerRef.current = abortController;
 
     try {
+      const cameraPose = cameraPoseRef?.current;
+      const selectedWall = modelFrame && cameraPose
+        ? selectWallReference(wallReferences, modelFrame, cameraPose)
+        : null;
       const response = await sendStructuralLineFrame(
         imagePayload,
         sessionIdRef.current,
         sequenceNumber,
-        orientationRef?.current?.gamma,
+        {
+          deviceRollDeg: orientationRef?.current?.gamma,
+          estimatedPosition: cameraPose?.position,
+          wallReference: selectedWall
+            ? {
+              id: selectedWall.id,
+              corners: selectedWall.corners,
+            }
+            : undefined,
+          referenceConfidence: selectedWall?.confidence,
+          horizontalFovDeg,
+          intrinsicsConfidence: 0.35,
+        },
         abortController.signal,
       );
       setStructuralResult(response.structuralLines);
@@ -565,7 +630,106 @@ export function CameraPermissionPanel({
                 {scanState === 'error' && `Scan error: ${errorMessage}`}
               </p>
               {structuralResult && cameraState === 'granted' && (
-                <div className="camera-panel__result">
+                <>
+                  <div className="camera-panel__result camera-panel__result--pose">
+                    <div className="camera-panel__confidence-label">
+                      <span>CV position estimate</span>
+                      <strong>
+                        {diagnosticPose
+                          ? `${Math.round(diagnosticPose.confidence * 100)}%`
+                          : 'Pending'}
+                      </strong>
+                    </div>
+                    {diagnosticPose && navigationPosition ? (
+                      <>
+                        <div
+                          className="camera-panel__confidence-track"
+                          role="progressbar"
+                          aria-label="CV position confidence"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(
+                            diagnosticPose.confidence * 100,
+                          )}
+                        >
+                          <span
+                            style={{
+                              width: `${Math.round(diagnosticPose.confidence * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <dl className="camera-panel__result-grid">
+                          <div>
+                            <dt>CV position</dt>
+                            <dd>
+                              X {diagnosticPose.position.x.toFixed(2)} / Y{' '}
+                              {diagnosticPose.position.y.toFixed(2)} / Z{' '}
+                              {diagnosticPose.position.z.toFixed(2)} m
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Navigation/PDR</dt>
+                            <dd>
+                              X {navigationPosition.x.toFixed(2)} / Y{' '}
+                              {navigationPosition.y.toFixed(2)} / Z{' '}
+                              {navigationPosition.z.toFixed(2)} m
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Horizontal deviation</dt>
+                            <dd>
+                              {diagnosticPose.delta.horizontal_m.toFixed(2)} m
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>3D deviation</dt>
+                            <dd>{diagnosticPose.delta.distance_m.toFixed(2)} m</dd>
+                          </div>
+                          <div>
+                            <dt>Selected wall</dt>
+                            <dd>{structuralResult.selected_wall_id ?? 'None'}</dd>
+                          </div>
+                          <div>
+                            <dt>Wall distance</dt>
+                            <dd>{diagnosticPose.distance_to_wall_m.toFixed(2)} m</dd>
+                          </div>
+                          <div>
+                            <dt>Reprojection error</dt>
+                            <dd>
+                              {diagnosticPose.reprojection_error_px.toFixed(2)} px
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Method</dt>
+                            <dd>{diagnosticPose.method}</dd>
+                          </div>
+                        </dl>
+                        <p className="camera-panel__diagnostic-note">
+                          Diagnostic only. The navigation position is not being
+                          corrected.
+                        </p>
+                      </>
+                    ) : (
+                      <p
+                        className="camera-panel__diagnostic-note"
+                        data-state="pending"
+                      >
+                        {poseFailureMessage(structuralResult.pose_failure_reason)}
+                      </p>
+                    )}
+                    {wallReferenceError && (
+                      <p
+                        className="camera-panel__diagnostic-note"
+                        data-state="error"
+                      >
+                        {wallReferenceError}
+                      </p>
+                    )}
+                  </div>
+
+                  <details className="camera-panel__diagnostics">
+                    <summary>Structural diagnostics</summary>
+                    <div className="camera-panel__result">
                   <div className="camera-panel__confidence-label">
                     <span>Floor boundary confidence</span>
                     <strong>
@@ -612,6 +776,19 @@ export function CameraPermissionPanel({
                       </dd>
                     </div>
                     <div>
+                      <dt>Wall outline confidence</dt>
+                      <dd>
+                        {Math.round(
+                          (structuralResult.wall_confidence ?? 0) * 100,
+                        )}
+                        %
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Wall candidates</dt>
+                      <dd>{structuralResult.wall_candidate_count ?? 0}</dd>
+                    </div>
+                    <div>
                       <dt>Line candidates</dt>
                       <dd>{structuralResult.candidate_count}</dd>
                     </div>
@@ -632,7 +809,30 @@ export function CameraPermissionPanel({
                       </dd>
                     </div>
                   </dl>
+                  <label
+                    className="camera-panel__calibration-control"
+                    htmlFor="camera-horizontal-fov"
+                  >
+                    <span>Camera horizontal FOV: {horizontalFovDeg} deg</span>
+                    <input
+                      id="camera-horizontal-fov"
+                      type="range"
+                      min={40}
+                      max={90}
+                      step={1}
+                      value={horizontalFovDeg}
+                      onChange={(event) =>
+                        setHorizontalFovDeg(Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <p className="camera-panel__diagnostic-note">
+                    Set the calibrated horizontal FOV for metric distance
+                    accuracy.
+                  </p>
                 </div>
+              </details>
+            </>
               )}
               {scanResult && (
                 <div className="camera-panel__result">

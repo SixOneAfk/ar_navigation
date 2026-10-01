@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  cameraIntrinsicsFromHorizontalFov,
   captureImageJpeg,
   captureJpegFrame,
   CV_FRAME_HEIGHT,
@@ -84,6 +85,17 @@ describe('captureImageJpeg', () => {
     );
   });
 });
+describe('cameraIntrinsicsFromHorizontalFov', () => {
+  it('creates centered intrinsics for the captured frame', () => {
+    const intrinsics = cameraIntrinsicsFromHorizontalFov(60);
+
+    expect(intrinsics.fx).toBeCloseTo(554.256, 3);
+    expect(intrinsics.fy).toBe(intrinsics.fx);
+    expect(intrinsics.cx).toBe(320);
+    expect(intrinsics.cy).toBe(240);
+  });
+});
+
 
 describe('sendCvFrame', () => {
   afterEach(() => {
@@ -183,18 +195,39 @@ describe('sendStructuralLineFrame', () => {
       'data:image/jpeg;base64,frame',
       'phone-session',
       7,
-      2.5,
+      {
+        deviceRollDeg: 2.5,
+        estimatedPosition: { x: 1, y: 1.6, z: 2 },
+        wallReference: {
+          id: 'wall-0001',
+          corners: [
+            { x: -2, y: 3, z: -5 },
+            { x: 2, y: 3, z: -5 },
+            { x: 2, y: 0, z: -5 },
+            { x: -2, y: 0, z: -5 },
+          ],
+        },
+        referenceConfidence: 0.82,
+        horizontalFovDeg: 60,
+        intrinsicsConfidence: 0.4,
+      },
     );
 
     expect(response.structuralLines).toEqual(structuralLines);
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/v1/cv/structural-lines');
-    expect(JSON.parse(options?.body as string)).toMatchObject({
+    const body = JSON.parse(options?.body as string);
+    expect(body).toMatchObject({
       session_id: 'phone-session',
       image_payload: 'data:image/jpeg;base64,frame',
       device_roll_deg: 2.5,
+      estimated_position: { x: 1, y: 1.6, z: 2 },
+      wall_reference: { id: 'wall-0001' },
+      reference_confidence: 0.82,
+      intrinsics_confidence: 0.4,
       frame_id: 'structural-7',
       sequence_number: 7,
     });
+    expect(body.camera_intrinsics.fx).toBeCloseTo(554.256, 3);
   });
 });

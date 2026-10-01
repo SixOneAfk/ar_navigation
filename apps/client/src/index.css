@@ -441,6 +441,58 @@ body,
 .camera-panel__result {
   margin-top: 0.65rem;
 }
+.camera-panel__result--pose {
+  padding: 0.65rem;
+  border: 1px solid rgba(53, 200, 255, 0.55);
+  border-radius: 9px;
+  background: rgba(226, 247, 255, 0.72);
+}
+
+.camera-panel__diagnostics {
+  margin-top: 0.65rem;
+  border-top: 1px solid rgba(80, 98, 125, 0.22);
+}
+
+.camera-panel__diagnostics summary {
+  padding-top: 0.55rem;
+  color: #344b69;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.camera-panel__diagnostics summary:hover {
+  color: #12688b;
+}
+
+.camera-panel__diagnostic-note {
+  margin: 0.6rem 0 0;
+  color: #405574;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.camera-panel__diagnostic-note[data-state='pending'] {
+  color: #7a5a16;
+}
+
+.camera-panel__diagnostic-note[data-state='error'] {
+  color: #a01616;
+}
+
+.camera-panel__calibration-control {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  color: #344b69;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.camera-panel__calibration-control input {
+  width: 100%;
+  accent-color: #1689b6;
+}
 
 .camera-panel__confidence-label {
   display: flex;

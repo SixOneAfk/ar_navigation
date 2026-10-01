@@ -8,6 +8,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from structural_lines import detect_structural_lines
+from wall_pose import estimate_camera_pose
 
 try:
     import cv2
@@ -84,18 +85,76 @@ class RecalibrateResponse(BaseModel):
     cv_horizon_confidence: float = 0.0
 
 
-class StructuralLinesRequest(BaseModel):
-    session_id: str
-    timestamp: int
-    image_payload: str
-    device_roll_deg: Optional[float] = None
-
-
 class NormalizedLine(BaseModel):
     x1: float = Field(ge=0.0, le=1.0)
     y1: float = Field(ge=0.0, le=1.0)
     x2: float = Field(ge=0.0, le=1.0)
     y2: float = Field(ge=0.0, le=1.0)
+
+
+class NormalizedPoint(BaseModel):
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+
+
+class WallOutline(BaseModel):
+    top_left: NormalizedPoint
+    top_right: NormalizedPoint
+    bottom_right: NormalizedPoint
+    bottom_left: NormalizedPoint
+
+
+class WorldPoint(BaseModel):
+    x: float
+    y: float
+    z: float
+
+
+class CameraIntrinsics(BaseModel):
+    fx: float = Field(gt=0.0)
+    fy: float = Field(gt=0.0)
+    cx: float
+    cy: float
+    distortion: list[float] = Field(
+        default_factory=lambda: [0.0] * 5,
+        min_length=4,
+        max_length=14,
+    )
+
+
+class WallReference(BaseModel):
+    id: str = Field(min_length=1)
+    corners: list[WorldPoint] = Field(min_length=4, max_length=4)
+
+
+class PositionDelta(BaseModel):
+    x: float
+    y: float
+    z: float
+    horizontal_m: float
+    distance_m: float
+
+
+class CameraPoseEstimate(BaseModel):
+    position: WorldPoint
+    delta: PositionDelta
+    confidence: float = Field(ge=0.0, le=1.0)
+    reprojection_error_px: float
+    distance_to_wall_m: float
+    method: str
+    diagnostic_only: bool
+
+
+class StructuralLinesRequest(BaseModel):
+    session_id: str
+    timestamp: int
+    image_payload: str
+    device_roll_deg: Optional[float] = None
+    estimated_position: Optional[WorldPoint] = None
+    camera_intrinsics: Optional[CameraIntrinsics] = None
+    wall_reference: Optional[WallReference] = None
+    reference_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    intrinsics_confidence: float = Field(default=0.35, ge=0.0, le=1.0)
 
 
 class StructuralLinesResponse(BaseModel):
@@ -105,6 +164,12 @@ class StructuralLinesResponse(BaseModel):
     boundary_confidence: float = Field(ge=0.0, le=1.0)
     camera_roll_deg: Optional[float]
     roll_confidence: float = Field(ge=0.0, le=1.0)
+    wall_outline: Optional[WallOutline]
+    wall_confidence: float = Field(ge=0.0, le=1.0)
+    wall_candidate_count: int
+    selected_wall_id: Optional[str] = None
+    pose_estimate: Optional[CameraPoseEstimate] = None
+    pose_failure_reason: Optional[str] = None
     candidate_count: int
     vertical_candidate_count: int
     image_width: int
@@ -321,7 +386,42 @@ def health_check() -> dict[str, str]:
 @app.post("/api/v1/structural-lines", response_model=StructuralLinesResponse)
 def structural_lines(payload: StructuralLinesRequest) -> StructuralLinesResponse:
     image = _decode_image(payload.image_payload)
-    return StructuralLinesResponse(**detect_structural_lines(image))
+    result = detect_structural_lines(image)
+    pose_estimate: dict[str, Any] | None = None
+    pose_failure_reason: str | None = None
+
+    if result["wall_outline"] is None:
+        pose_failure_reason = "wall_outline_not_detected"
+    elif payload.wall_reference is None:
+        pose_failure_reason = "wall_reference_not_selected"
+    elif payload.camera_intrinsics is None:
+        pose_failure_reason = "camera_intrinsics_not_available"
+    elif payload.estimated_position is None:
+        pose_failure_reason = "estimated_position_not_available"
+    else:
+        pose_estimate, pose_failure_reason = estimate_camera_pose(
+            result["wall_outline"],
+            [
+                corner.model_dump()
+                for corner in payload.wall_reference.corners
+            ],
+            payload.camera_intrinsics.model_dump(),
+            payload.estimated_position.model_dump(),
+            result["image_width"],
+            result["image_height"],
+            result["wall_confidence"],
+            payload.reference_confidence,
+            payload.intrinsics_confidence,
+        )
+
+    result["selected_wall_id"] = (
+        payload.wall_reference.id
+        if payload.wall_reference is not None
+        else None
+    )
+    result["pose_estimate"] = pose_estimate
+    result["pose_failure_reason"] = pose_failure_reason
+    return StructuralLinesResponse(**result)
 
 
 @app.post("/api/v1/recalibrate", response_model=RecalibrateResponse)

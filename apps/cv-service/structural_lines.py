@@ -4,6 +4,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from wall_pose import detect_wall_outline
 
 
 def _normalize_angle_deg(value: float) -> float:
@@ -256,8 +257,16 @@ def detect_structural_lines(image: np.ndarray) -> dict[str, Any]:
         )
         camera_roll_deg = -mean_deviation
 
+    wall_detection = detect_wall_outline(
+        segments,
+        best_boundary,
+        width,
+        height,
+    )
+
     return {
         "detected": best_boundary is not None,
+        **wall_detection,
         "floor_boundary": best_boundary,
         "boundary_angle_deg": (
             round(float(best_boundary_angle), 3)

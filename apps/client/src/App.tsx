@@ -13,6 +13,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from './navigation/useNavigation';
 import type { ModelSceneFrame } from './navigation/navigationData';
 import { calculateRollBiasDeg } from './utils/cvRoll';
+import {
+  parseWallReferenceCatalog,
+  type CameraPoseSnapshot,
+  type WallReference,
+} from './utils/wallReferences';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
@@ -66,6 +71,15 @@ export default function App() {
   const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
   const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
   const lastCvHorizonAppliedAtRef = useRef(0);
+  const cameraPoseRef = useRef<CameraPoseSnapshot>({
+    position: { ...INITIAL_NAV_POSITION },
+    forward: { x: 0, y: 0, z: -1 },
+    right: { x: 1, y: 0, z: 0 },
+  });
+  const [wallReferences, setWallReferences] = useState<WallReference[]>([]);
+  const [wallReferenceError, setWallReferenceError] = useState<string | null>(
+    null,
+  );
 
   const accelConfig = useMemo(
     () => ({
@@ -97,6 +111,54 @@ export default function App() {
     setJoystick({ x: 0, y: 0 });
     setVerticalAxis(0);
   }, [moveMode]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWallReferences = async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}wall_references.json`,
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Wall catalog request failed with HTTP ${response.status}.`,
+          );
+        }
+        const catalog = parseWallReferenceCatalog(await response.json());
+        const expectedModel = MODEL_PATH.split('/').pop();
+        if (catalog.source_model !== expectedModel) {
+          throw new Error(
+            `Wall catalog belongs to ${catalog.source_model}, expected ${expectedModel}.`,
+          );
+        }
+        if (!cancelled) {
+          setWallReferences(catalog.walls);
+          setWallReferenceError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWallReferences([]);
+          setWallReferenceError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
+    };
+
+    void loadWallReferences();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!navigation.initialPosition) return;
+    cameraPoseRef.current.position = {
+      x: navigation.initialPosition.x,
+      y: navigation.initialPosition.y,
+      z: navigation.initialPosition.z,
+    };
+  }, [navigation.initialPosition]);
 
   const format = (value: number) => value.toFixed(3);
   const togglePanel = (panel: Exclude<PanelId, null>) => {
@@ -157,6 +219,10 @@ export default function App() {
         onClose={() => setOpenPanel(null)}
         orientationRef={orientationRef}
         onHorizonCorrectionResolved={applyCvHorizonCorrection}
+        modelFrame={modelFrame}
+        cameraPoseRef={cameraPoseRef}
+        wallReferences={wallReferences}
+        wallReferenceError={wallReferenceError}
       />
 
 
@@ -507,6 +573,7 @@ export default function App() {
           debugVerticalEnabled={debugVerticalEnabled}
           horizonOffsetDeg={horizonOffsetDeg}
           sensitivity={1}
+          onPoseChange={(pose) => { cameraPoseRef.current = pose; }}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}

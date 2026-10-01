@@ -79,6 +79,11 @@ export class CvController {
       timestamp: dto.timestamp ?? Date.now(),
       image_payload: imagePayload,
       device_roll_deg: dto.device_roll_deg,
+      estimated_position: dto.estimated_position,
+      camera_intrinsics: dto.camera_intrinsics,
+      wall_reference: dto.wall_reference,
+      reference_confidence: dto.reference_confidence,
+      intrinsics_confidence: dto.intrinsics_confidence,
     };
 
     try {
