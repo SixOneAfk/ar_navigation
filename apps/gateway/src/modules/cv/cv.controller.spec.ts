@@ -103,6 +103,58 @@ describe('CvController', () => {
     });
   });
 
+  it('forwards structural frames without calling positioning', async () => {
+    const structuralLines = {
+      detected: true,
+      floor_boundary: { x1: 0.1, y1: 0.7, x2: 0.9, y2: 0.72 },
+      boundary_angle_deg: 1.4,
+      boundary_confidence: 0.86,
+      camera_roll_deg: -0.8,
+      roll_confidence: 0.91,
+      candidate_count: 6,
+      vertical_candidate_count: 4,
+      image_width: 640,
+      image_height: 480,
+      processing_time_ms: 3.2,
+    };
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(structuralLines), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const result = await controller.structuralLines({
+      session_id: 'phone-session',
+      timestamp: 123,
+      image_payload: 'data:image/jpeg;base64,abc',
+      device_roll_deg: 2.5,
+      frame_id: 'structural-7',
+      sequence_number: 7,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: 'accepted',
+        source: 'cv-structural-lines',
+        frameId: 'structural-7',
+        sequenceNumber: 7,
+        structuralLines,
+      }),
+    );
+    expect(positioningGrpcClient.estimatePosition).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://localhost:8000/api/v1/structural-lines',
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      session_id: 'phone-session',
+      timestamp: 123,
+      image_payload: 'data:image/jpeg;base64,abc',
+      device_roll_deg: 2.5,
+    });
+  });
+
   it('rejects a request without an image', async () => {
     await expect(controller.scan({})).rejects.toBeInstanceOf(
       BadRequestException,

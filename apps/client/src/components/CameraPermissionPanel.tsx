@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   captureImageJpeg,
   captureJpegFrame,
   CV_FRAME_HEIGHT,
-  CV_FRAME_INTERVAL_MS,
+  STRUCTURAL_FRAME_INTERVAL_MS,
   CV_FRAME_WIDTH,
   type CvScanResponse,
   type RecalibrationResult,
+  type StructuralLinesResult,
   sendCvFrame,
+  sendStructuralLineFrame,
 } from '../utils/cvFrame';
+import { StructuralLineOverlay } from './StructuralLineOverlay';
 
 type CameraState =
   | 'idle'
@@ -22,6 +25,7 @@ type CameraState =
 type ScanState = 'idle' | 'sending' | 'success' | 'error';
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const DEMO_IMAGE_URL = '/demo-room-101.svg';
+const MIN_ROLL_CONFIDENCE = 0.65;
 
 type CameraPermissionPanelProps = {
   isOpen: boolean;
@@ -33,8 +37,9 @@ type CameraPermissionPanelProps = {
     floor: number;
     markerId: string;
   }) => void;
+  orientationRef?: RefObject<{ gamma: number }>;
   onHorizonCorrectionResolved?: (payload: {
-    rollDeg: number;
+    cameraRollDeg: number;
     confidence: number;
   }) => void;
 };
@@ -43,6 +48,7 @@ export function CameraPermissionPanel({
   isOpen,
   onClose,
   onMarkerPositionResolved,
+  orientationRef,
   onHorizonCorrectionResolved,
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -53,6 +59,10 @@ export function CameraPermissionPanel({
   const scanInFlightRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(`camera-${Date.now()}`);
+  const sequenceNumberRef = useRef(0);
+  const rollSamplesRef = useRef<
+    Array<{ value: number; confidence: number; timestamp: number }>
+  >([]);
 
   const [cameraState, setCameraState] = useState<CameraState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -61,6 +71,8 @@ export function CameraPermissionPanel({
     null,
   );
   const [scanEnvelope, setScanEnvelope] = useState<CvScanResponse | null>(null);
+  const [structuralResult, setStructuralResult] =
+    useState<StructuralLinesResult | null>(null);
   const [framesProcessed, setFramesProcessed] = useState(0);
   const [framePreview, setFramePreview] = useState<string | null>(null);
   const [frameLabel, setFrameLabel] = useState('');
@@ -95,6 +107,7 @@ export function CameraPermissionPanel({
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     scanInFlightRef.current = false;
+    rollSamplesRef.current = [];
   }
 
   function loadImage(source: string): Promise<HTMLImageElement> {
@@ -139,17 +152,6 @@ export function CameraPermissionPanel({
           markerId: response.recalibration.matched_node_id,
         });
       }
-      if (
-        typeof response.recalibration.cv_horizon_roll_deg === 'number' &&
-        Number.isFinite(response.recalibration.cv_horizon_roll_deg) &&
-        typeof response.recalibration.cv_horizon_confidence === 'number' &&
-        Number.isFinite(response.recalibration.cv_horizon_confidence)
-      ) {
-        onHorizonCorrectionResolved?.({
-          rollDeg: response.recalibration.cv_horizon_roll_deg,
-          confidence: response.recalibration.cv_horizon_confidence,
-        });
-      }
       setFramesProcessed((current) => current + 1);
       setProcessingTimeMs(Math.round(performance.now() - startedAt));
       setScanState('success');
@@ -161,6 +163,95 @@ export function CameraPermissionPanel({
       setScanState('error');
       setErrorMessage(
         error instanceof Error ? error.message : 'CV scan failed',
+      );
+    } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
+      scanInFlightRef.current = false;
+    }
+  }
+
+  function resolveStableRoll(result: StructuralLinesResult) {
+    const value = result.camera_roll_deg;
+    const confidence = result.roll_confidence;
+    const now = performance.now();
+    rollSamplesRef.current = rollSamplesRef.current.filter(
+      (sample) => now - sample.timestamp <= 1200,
+    );
+
+    if (
+      typeof value !== 'number'
+      || !Number.isFinite(value)
+      || confidence < MIN_ROLL_CONFIDENCE
+    ) {
+      rollSamplesRef.current = [];
+      return;
+    }
+
+    rollSamplesRef.current.push({ value, confidence, timestamp: now });
+    rollSamplesRef.current = rollSamplesRef.current.slice(-5);
+    if (rollSamplesRef.current.length < 3) {
+      return;
+    }
+
+    const values = rollSamplesRef.current.map((sample) => sample.value);
+    if (Math.max(...values) - Math.min(...values) > 3) {
+      rollSamplesRef.current = rollSamplesRef.current.slice(-1);
+      return;
+    }
+
+    const totalWeight = rollSamplesRef.current.reduce(
+      (sum, sample) => sum + sample.confidence,
+      0,
+    );
+    const cameraRollDeg = rollSamplesRef.current.reduce(
+      (sum, sample) => sum + (sample.value * sample.confidence),
+      0,
+    ) / totalWeight;
+    const stableConfidence = totalWeight / rollSamplesRef.current.length;
+    onHorizonCorrectionResolved?.({
+      cameraRollDeg,
+      confidence: stableConfidence,
+    });
+  }
+
+  async function submitStructuralFrame(imagePayload: string) {
+    if (scanInFlightRef.current) {
+      return;
+    }
+
+    scanInFlightRef.current = true;
+    const sequenceNumber = sequenceNumberRef.current + 1;
+    sequenceNumberRef.current = sequenceNumber;
+    if (sequenceNumber === 1) {
+      setScanState('sending');
+    }
+    const startedAt = performance.now();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    try {
+      const response = await sendStructuralLineFrame(
+        imagePayload,
+        sessionIdRef.current,
+        sequenceNumber,
+        orientationRef?.current?.gamma,
+        abortController.signal,
+      );
+      setStructuralResult(response.structuralLines);
+      resolveStableRoll(response.structuralLines);
+      setFramesProcessed((current) => current + 1);
+      setProcessingTimeMs(Math.round(performance.now() - startedAt));
+      setScanState('success');
+      setErrorMessage('');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+      setScanState('error');
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Structural line scan failed',
       );
     } finally {
       if (abortControllerRef.current === abortController) {
@@ -192,7 +283,7 @@ export function CameraPermissionPanel({
       return;
     }
 
-    await submitFrame(imagePayload, 'Live camera frame');
+    await submitStructuralFrame(imagePayload);
   }
 
   function startFrameCapture() {
@@ -200,7 +291,7 @@ export function CameraPermissionPanel({
     void captureAndSendFrame();
     captureTimerRef.current = window.setInterval(() => {
       void captureAndSendFrame();
-    }, CV_FRAME_INTERVAL_MS);
+    }, STRUCTURAL_FRAME_INTERVAL_MS);
   }
 
   async function requestCamera() {
@@ -220,6 +311,9 @@ export function CameraPermissionPanel({
     setFrameLabel('');
     setScanResult(null);
     setScanEnvelope(null);
+    setStructuralResult(null);
+    sequenceNumberRef.current = 0;
+    rollSamplesRef.current = [];
     setFramesProcessed(0);
     setProcessingTimeMs(null);
     setErrorMessage('');
@@ -277,6 +371,7 @@ export function CameraPermissionPanel({
     setCameraState('idle');
     setScanResult(null);
     setScanEnvelope(null);
+    setStructuralResult(null);
     setFramesProcessed(0);
     setProcessingTimeMs(null);
     setErrorMessage('');
@@ -331,6 +426,8 @@ export function CameraPermissionPanel({
     setCameraState('idle');
     setScanState('idle');
     setScanResult(null);
+    setScanEnvelope(null);
+    setStructuralResult(null);
     setFramesProcessed(0);
     setFramePreview(null);
     setFrameLabel('');
@@ -345,6 +442,11 @@ export function CameraPermissionPanel({
         <img className="camera-bg" src={framePreview} alt="Uploaded CV frame" />
       )}
       <canvas ref={canvasRef} className="camera-capture" aria-hidden="true" />
+      <StructuralLineOverlay
+        videoRef={videoRef}
+        result={structuralResult}
+        active={cameraState === 'granted'}
+      />
 
       {isOpen && (
         <section className="camera-panel">
@@ -419,7 +521,7 @@ export function CameraPermissionPanel({
             {cameraState === 'requesting' &&
               'Waiting for browser permission...'}
             {cameraState === 'granted' &&
-              'Camera active. Sending one 640x480 JPEG frame per second.'}
+              'Camera active. Tracking structural lines at up to 5 FPS.'}
             {cameraState === 'denied' &&
               'Camera permission denied. Allow access in browser site settings.'}
             {cameraState === 'unsupported' &&
@@ -445,13 +547,93 @@ export function CameraPermissionPanel({
                 {scanState === 'idle' && 'Waiting for the first video frame.'}
                 {scanState === 'sending' && 'Processing frame...'}
                 {scanState === 'success' &&
+                  cameraState === 'granted' &&
+                  structuralResult?.detected &&
+                  `Floor boundary detected (${Math.round(structuralResult.boundary_confidence * 100)}%).`}
+                {scanState === 'success' &&
+                  cameraState === 'granted' &&
+                  !structuralResult?.detected &&
+                  'No stable floor boundary detected.'}
+                {scanState === 'success' &&
+                  cameraState !== 'granted' &&
                   scanResult?.recalibrated &&
                   `Marker ${scanResult.matched_node_id} detected (${Math.round(scanResult.confidence * 100)}%).`}
                 {scanState === 'success' &&
+                  cameraState !== 'granted' &&
                   !scanResult?.recalibrated &&
                   'No known marker detected.'}
                 {scanState === 'error' && `Scan error: ${errorMessage}`}
               </p>
+              {structuralResult && cameraState === 'granted' && (
+                <div className="camera-panel__result">
+                  <div className="camera-panel__confidence-label">
+                    <span>Floor boundary confidence</span>
+                    <strong>
+                      {Math.round(structuralResult.boundary_confidence * 100)}%
+                    </strong>
+                  </div>
+                  <div
+                    className="camera-panel__confidence-track"
+                    role="progressbar"
+                    aria-label="Floor boundary confidence"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(
+                      structuralResult.boundary_confidence * 100,
+                    )}
+                  >
+                    <span
+                      style={{
+                        width: `${Math.round(structuralResult.boundary_confidence * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <dl className="camera-panel__result-grid">
+                    <div>
+                      <dt>Boundary angle</dt>
+                      <dd>
+                        {structuralResult.boundary_angle_deg === null
+                          ? 'N/A'
+                          : `${structuralResult.boundary_angle_deg.toFixed(1)} deg`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Camera roll</dt>
+                      <dd>
+                        {structuralResult.camera_roll_deg === null
+                          ? 'N/A'
+                          : `${structuralResult.camera_roll_deg.toFixed(1)} deg`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Roll confidence</dt>
+                      <dd>
+                        {Math.round(structuralResult.roll_confidence * 100)}%
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Line candidates</dt>
+                      <dd>{structuralResult.candidate_count}</dd>
+                    </div>
+                    <div>
+                      <dt>Vertical candidates</dt>
+                      <dd>{structuralResult.vertical_candidate_count}</dd>
+                    </div>
+                    <div>
+                      <dt>CV processing</dt>
+                      <dd>{structuralResult.processing_time_ms.toFixed(1)} ms</dd>
+                    </div>
+                    <div>
+                      <dt>Round trip</dt>
+                      <dd>
+                        {processingTimeMs === null
+                          ? 'N/A'
+                          : `${processingTimeMs} ms`}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
               {scanResult && (
                 <div className="camera-panel__result">
                   <div className="camera-panel__confidence-label">

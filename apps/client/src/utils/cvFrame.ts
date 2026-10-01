@@ -1,6 +1,7 @@
 export const CV_FRAME_WIDTH = 640;
 export const CV_FRAME_HEIGHT = 480;
 export const CV_FRAME_INTERVAL_MS = 1000;
+export const STRUCTURAL_FRAME_INTERVAL_MS = 200;
 const JPEG_QUALITY = 0.8;
 
 export type RecalibrationResult = {
@@ -52,6 +53,36 @@ export type CvScanResponse = {
     reason: string;
     candidateDistanceM: number;
   };
+};
+
+export type NormalizedLine = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
+export type StructuralLinesResult = {
+  detected: boolean;
+  floor_boundary: NormalizedLine | null;
+  boundary_angle_deg: number | null;
+  boundary_confidence: number;
+  camera_roll_deg: number | null;
+  roll_confidence: number;
+  candidate_count: number;
+  vertical_candidate_count: number;
+  image_width: number;
+  image_height: number;
+  processing_time_ms: number;
+};
+
+export type StructuralLinesResponse = {
+  status: string;
+  source: string;
+  receivedAt: string;
+  frameId: string;
+  sequenceNumber: number;
+  structuralLines: StructuralLinesResult;
 };
 
 export type CvScanMetadata = {
@@ -186,4 +217,36 @@ export async function sendCvFrame(
   }
 
   return (await response.json()) as CvScanResponse;
+}
+
+export async function sendStructuralLineFrame(
+  imagePayload: string,
+  sessionId: string,
+  sequenceNumber: number,
+  deviceRollDeg: number | undefined,
+  signal?: AbortSignal,
+): Promise<StructuralLinesResponse> {
+  const frameId = `structural-${sequenceNumber}`;
+  const response = await fetch('/api/v1/cv/structural-lines', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      timestamp: Date.now(),
+      image_payload: imagePayload,
+      device_roll_deg: deviceRollDeg,
+      frame_id: frameId,
+      sequence_number: sequenceNumber,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(
+      `Gateway returned HTTP ${response.status}${responseText ? `: ${responseText}` : ''}`,
+    );
+  }
+
+  return (await response.json()) as StructuralLinesResponse;
 }

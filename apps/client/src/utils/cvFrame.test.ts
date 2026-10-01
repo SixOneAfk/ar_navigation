@@ -5,6 +5,7 @@ import {
   CV_FRAME_HEIGHT,
   CV_FRAME_WIDTH,
   sendCvFrame,
+  sendStructuralLineFrame,
 } from './cvFrame';
 
 describe('captureJpegFrame', () => {
@@ -142,5 +143,58 @@ describe('sendCvFrame', () => {
     await expect(sendCvFrame('frame', 'session')).rejects.toThrow(
       'Gateway returned HTTP 502: CV service unavailable',
     );
+  });
+});
+
+describe('sendStructuralLineFrame', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends roll metadata without OCR position fields', async () => {
+    const structuralLines = {
+      detected: true,
+      floor_boundary: { x1: 0.1, y1: 0.7, x2: 0.9, y2: 0.71 },
+      boundary_angle_deg: 0.8,
+      boundary_confidence: 0.88,
+      camera_roll_deg: -1.2,
+      roll_confidence: 0.92,
+      candidate_count: 5,
+      vertical_candidate_count: 4,
+      image_width: 640,
+      image_height: 480,
+      processing_time_ms: 3.1,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: 'accepted',
+          source: 'cv-structural-lines',
+          receivedAt: '2026-10-01T12:00:00.000Z',
+          frameId: 'structural-7',
+          sequenceNumber: 7,
+          structuralLines,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const response = await sendStructuralLineFrame(
+      'data:image/jpeg;base64,frame',
+      'phone-session',
+      7,
+      2.5,
+    );
+
+    expect(response.structuralLines).toEqual(structuralLines);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/v1/cv/structural-lines');
+    expect(JSON.parse(options?.body as string)).toMatchObject({
+      session_id: 'phone-session',
+      image_payload: 'data:image/jpeg;base64,frame',
+      device_roll_deg: 2.5,
+      frame_id: 'structural-7',
+      sequence_number: 7,
+    });
   });
 });

@@ -34,6 +34,41 @@ describe('GyroCamera', () => {
     });
   });
 
+  it('applies calibrated roll to the camera instead of the model', () => {
+    const orientationRef: RefObject<Orientation> = {
+      current: { alpha: 0, beta: 0, gamma: 10 },
+    };
+    const motionRef: RefObject<MotionData> = {
+      current: { x: 0, y: 0, z: 0, timestamp: 16 },
+    };
+
+    const calibratedView = render(
+      <GyroCamera
+        orientationRef={orientationRef}
+        motionRef={motionRef}
+        active
+        moveMode="gyro"
+        horizonOffsetDeg={10}
+      />,
+    );
+
+    expect(camera.quaternion.z).toBeCloseTo(0);
+    calibratedView.unmount();
+    camera.quaternion.identity();
+
+    render(
+      <GyroCamera
+        orientationRef={orientationRef}
+        motionRef={motionRef}
+        active
+        moveMode="gyro"
+        horizonOffsetDeg={0}
+      />,
+    );
+
+    expect(camera.quaternion.z).toBeLessThan(-0.005);
+  });
+
   it('advances position from detected steps in walk mode', () => {
     const orientationRef: RefObject<Orientation> = {
       current: { alpha: 0, beta: 0, gamma: 0 },

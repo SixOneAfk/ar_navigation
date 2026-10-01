@@ -7,6 +7,7 @@ from typing import Any, Optional
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from structural_lines import detect_structural_lines
 
 try:
     import cv2
@@ -81,6 +82,34 @@ class RecalibrateResponse(BaseModel):
     failure_reason: Optional[str] = None
     cv_horizon_roll_deg: Optional[float] = None
     cv_horizon_confidence: float = 0.0
+
+
+class StructuralLinesRequest(BaseModel):
+    session_id: str
+    timestamp: int
+    image_payload: str
+    device_roll_deg: Optional[float] = None
+
+
+class NormalizedLine(BaseModel):
+    x1: float = Field(ge=0.0, le=1.0)
+    y1: float = Field(ge=0.0, le=1.0)
+    x2: float = Field(ge=0.0, le=1.0)
+    y2: float = Field(ge=0.0, le=1.0)
+
+
+class StructuralLinesResponse(BaseModel):
+    detected: bool
+    floor_boundary: Optional[NormalizedLine]
+    boundary_angle_deg: Optional[float]
+    boundary_confidence: float = Field(ge=0.0, le=1.0)
+    camera_roll_deg: Optional[float]
+    roll_confidence: float = Field(ge=0.0, le=1.0)
+    candidate_count: int
+    vertical_candidate_count: int
+    image_width: int
+    image_height: int
+    processing_time_ms: float
 
 
 @lru_cache(maxsize=1)
@@ -287,6 +316,12 @@ def _estimate_horizon_roll_deg(image: np.ndarray) -> tuple[Optional[float], floa
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cv-service"}
+
+
+@app.post("/api/v1/structural-lines", response_model=StructuralLinesResponse)
+def structural_lines(payload: StructuralLinesRequest) -> StructuralLinesResponse:
+    image = _decode_image(payload.image_payload)
+    return StructuralLinesResponse(**detect_structural_lines(image))
 
 
 @app.post("/api/v1/recalibrate", response_model=RecalibrateResponse)
