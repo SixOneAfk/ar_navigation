@@ -29,15 +29,12 @@ class ImagePipelineTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 400)
 
-    def test_score_match_uses_edit_distance(self) -> None:
-        self.assertAlmostEqual(main._score_match("ROM101", "ROOM101"), 6 / 7)
-
-    def test_match_node_accepts_similar_signage(self) -> None:
+    def test_match_node_does_not_assign_unmapped_signage_to_a_graph_point(self) -> None:
         node_id, detected_text, confidence = main._match_node([("ROM 101", 0.9)])
 
-        self.assertEqual(node_id, "N101")
+        self.assertIsNone(node_id)
         self.assertEqual(detected_text, "ROM101")
-        self.assertGreater(confidence, 0.7)
+        self.assertEqual(confidence, 0.9)
 
 
 class EasyOcrCacheTests(unittest.TestCase):
@@ -64,7 +61,7 @@ class EasyOcrCacheTests(unittest.TestCase):
 
 class RecalibrateTests(unittest.TestCase):
     @patch.object(main, "_ocr_candidates", return_value=[("ROOM 201", 0.95)])
-    def test_recalibrate_returns_matching_node(self, _mock_ocr: object) -> None:
+    def test_recalibrate_reports_text_without_claiming_a_node_mapping(self, _mock_ocr: object) -> None:
         request = main.RecalibrateRequest(
             session_id="test-session",
             timestamp=1,
@@ -74,12 +71,12 @@ class RecalibrateTests(unittest.TestCase):
 
         response = main.recalibrate_position(request)
 
-        self.assertTrue(response.recalibrated)
-        self.assertEqual(response.matched_node_id, "N201")
+        self.assertFalse(response.recalibrated)
+        self.assertIsNone(response.matched_node_id)
         self.assertEqual(response.detected_text, "ROOM201")
-        self.assertEqual(response.marker_position, main.MARKER_COORDINATES["N201"])
+        self.assertIsNone(response.marker_position)
         self.assertGreaterEqual(len(response.ocr_candidates), 1)
-        self.assertIsNone(response.failure_reason)
+        self.assertEqual(response.failure_reason, "no_navigation_point_mapping")
 
 
 if __name__ == "__main__":

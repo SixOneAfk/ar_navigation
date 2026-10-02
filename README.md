@@ -38,7 +38,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ## Model Asset
 
-The client looks for a 3D corridor model at `apps/client/public/model.glb`.
+The client loads the building model from `apps/client/public/Floor 1_Rotated_Points.glb`.
 
 ## Main API Endpoints
 

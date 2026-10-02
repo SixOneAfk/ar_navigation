@@ -12,7 +12,9 @@ import {
   type ModelSceneFrame,
 } from './navigationData';
 import { buildNavigationGraph, findShortestPath, getNavigationGraphStats, type NavigationPath } from './graph';
-import { NAVIGABLE_DESTINATIONS, getValidDestinations, type NavigableDestination } from './destinations';
+import { getValidDestinations, NAVIGABLE_DESTINATIONS, type NavigableDestination } from './destinations';
+
+const ENTRANCE_POINT_ID = 'Entrance';
 
 export type PlayerNavigationDebug = {
   playerPosition: { x: number; y: number; z: number };
@@ -42,7 +44,6 @@ function distanceToSegment(point: THREE.Vector3, start: THREE.Vector3, end: THRE
 export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: number) {
   const [navigation, setNavigation] = useState<BuildingNavigation | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [alignmentWarning, setAlignmentWarning] = useState<string | null>(null);
   const [currentPointId, setCurrentPointId] = useState<string | null>(null);
   const [debugSnapshot, setDebugSnapshot] = useState<PlayerNavigationDebug | null>(null);
   const [destinationId, setDestinationId] = useState<string | null>(null);
@@ -70,17 +71,28 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
 
         setNavigation(loadedNavigation);
         navigationRef.current = loadedNavigation;
-        const graphStats = getNavigationGraphStats(loadedNavigation);
+        navigationLogger.info(
+          'NavigationData',
+          [
+            '[NAVIGATION] JSON Loaded',
+            `  Points: ${loadedNavigation.points.length}`,
+            `  Branches: ${loadedNavigation.branches.length}`,
+          ].join('\n'),
+        );
+
+        const graphStats = getNavigationGraphStats(loadedNavigation, (branch) => {
+          navigationLogger.warn(
+            'NavigationGraph',
+            `[NAVIGATION] Ignoring diagonal edge: ${branch.from} -> ${branch.to}`,
+          );
+        });
         navigationLogger.info(
           'NavigationGraph',
           [
-            '[NAVIGATION] Graph loaded',
-            `  Points: ${graphStats.points}`,
-            `  Branches: ${graphStats.branches}`,
-            `  Valid branches: ${graphStats.validBranches}`,
-            `  Invalid branches: ${graphStats.invalidBranches}`,
-            `  Diagonal branches excluded: ${graphStats.diagonalBranchesExcluded}`,
-            `  Graph edges: ${graphStats.graphEdges}`,
+            '[NAVIGATION] Graph',
+            `  Nodes: ${graphStats.points}`,
+            `  Edges: ${graphStats.graphEdges}`,
+            `  Rejected Diagonal Edges: ${graphStats.diagonalBranchesExcluded}`,
           ].join('\n'),
         );
         if (loadedNavigation.invalidBranches?.length) {
@@ -89,27 +101,24 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
             loadedNavigation.invalidBranches.map((branch) => `[NAVIGATION] Invalid branch: ${branch}`).join('\n'),
           );
         }
-        const loadedPointIds = new Set(loadedNavigation.points.map((point) => point.id));
-        const invalidDestinations = NAVIGABLE_DESTINATIONS.filter((destination) => !loadedPointIds.has(destination.id));
-        if (invalidDestinations.length > 0) {
+
+        const namedDestinations = getValidDestinations(loadedNavigation.points);
+        navigationLogger.info(
+          'NavigationDestinations',
+          ['[NAVIGATION] Named Destinations', ...namedDestinations.map((destination) => `  ${destination.id}`)].join('\n'),
+        );
+        const missingDestinations = NAVIGABLE_DESTINATIONS.filter(
+          (destination) => !namedDestinations.some((valid) => valid.id === destination.id),
+        );
+        if (missingDestinations.length > 0) {
           navigationLogger.error(
-            'NavigationDestinationConfig',
-            `[NAVIGATION] Ignoring configured destinations missing from JSON: ${invalidDestinations.map((destination) => destination.id).join(', ')}`,
+            'NavigationDestinations',
+            `[NAVIGATION] Configured destinations missing from JSON: ${missingDestinations.map((destination) => destination.id).join(', ')}`,
           );
         }
-        navigationLogger.info(
-          'NavigationData',
-          [
-            '[NAVIGATION] Navigation data loaded',
-            `  Building: ${loadedNavigation.building}`,
-            `  Points: ${loadedNavigation.points.length}`,
-            `  Grid Cell Size: ${loadedNavigation.grid.cell_size.toFixed(2)}m`,
-            `  Coordinate System: ${loadedNavigation.grid.coordinate_system.x} / ${loadedNavigation.grid.coordinate_system.y}`,
-          ].join('\n'),
-        );
 
-        if (!loadedNavigation.points.some((point) => point.id === 'Entrance')) {
-          const message = 'Navigation data does not contain a point with ID "Entrance"; keeping the current camera start position.';
+        if (!loadedNavigation.points.some((point) => point.id === ENTRANCE_POINT_ID)) {
+          const message = `Navigation data does not contain a point with ID "${ENTRANCE_POINT_ID}".`;
           setLoadError(message);
           navigationLogger.error('NavigationLoadError', message);
         }
@@ -128,10 +137,6 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     };
   }, []);
 
-  const entrance = useMemo(
-    () => navigation?.points.find((point) => point.id === 'Entrance') ?? null,
-    [navigation],
-  );
   const worldPoints = useMemo(
     () => navigation && modelFrame
       ? createWorldNavigationPoints(navigation, modelFrame, cameraHeight)
@@ -143,12 +148,52 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     () => navigation ? getValidDestinations(navigation.points) : [],
     [navigation],
   );
-  const initialPosition = useMemo(
-    () => entrance && modelFrame
-      ? navigationPointToThreePosition(entrance, modelFrame, cameraHeight)
-      : null,
-    [cameraHeight, entrance, modelFrame],
+  const entrancePoint = useMemo(
+    () => navigation?.points.find((point) => point.id === ENTRANCE_POINT_ID) ?? null,
+    [navigation],
   );
+  const initialPosition = useMemo(
+    () => entrancePoint && modelFrame
+      ? navigationPointToThreePosition(entrancePoint, modelFrame, cameraHeight)
+      : null,
+    [cameraHeight, entrancePoint, modelFrame],
+  );
+  const initialPointAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (initialPointAppliedRef.current || !entrancePoint || !initialPosition || !modelFrame) return;
+    initialPointAppliedRef.current = true;
+    currentPointIdRef.current = ENTRANCE_POINT_ID;
+    setCurrentPointId(ENTRANCE_POINT_ID);
+    // Player initial position is set to the same converted value NavigationTracker will apply to the camera.
+    const distanceMeters = 0;
+    navigationLogger.info(
+      'NavigationInitialPosition',
+      [
+        '[NAVIGATION] ENTRANCE INITIALIZATION',
+        '',
+        'JSON Entrance:',
+        `  X = ${entrancePoint.x.toFixed(4)}`,
+        `  Y = ${entrancePoint.y.toFixed(4)}`,
+        '',
+        'Rotation Correction:',
+        '  Angle = 305.00 deg',
+        '  Direction = counter-clockwise (standard rotation of JSON x,y around the origin)',
+        '',
+        'Converted Three.js Entrance:',
+        `  X = ${initialPosition.x.toFixed(4)}`,
+        `  Y = ${initialPosition.y.toFixed(4)}`,
+        `  Z = ${initialPosition.z.toFixed(4)}`,
+        '',
+        'Player Initial Position:',
+        `  X = ${initialPosition.x.toFixed(4)}`,
+        `  Y = ${initialPosition.y.toFixed(4)}`,
+        `  Z = ${initialPosition.z.toFixed(4)}`,
+        '',
+        `Distance (converted Entrance <-> player initial position): ${distanceMeters.toFixed(4)} m`,
+      ].join('\n'),
+    );
+  }, [entrancePoint, initialPosition, modelFrame]);
 
   useEffect(() => {
     worldPointsRef.current = worldPoints;
@@ -172,8 +217,12 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       return;
     }
 
+    navigationLogger.info('NavigationRoute', `[NAVIGATION] Start Node: ${startId}`);
+    navigationLogger.info('NavigationRoute', `[NAVIGATION] Destination Node: ${nextDestinationId}`);
+
+    const graph = buildNavigationGraph(loadedNavigation);
     try {
-      const route = findShortestPath(buildNavigationGraph(loadedNavigation), startId, nextDestinationId);
+      const route = findShortestPath(graph, startId, nextDestinationId);
       setDestinationId(nextDestinationId);
       setRoute(route);
       setRouteMessage(null);
@@ -181,18 +230,27 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       navigationLogger.info(
         'NavigationRoute',
         [
-          '[NAVIGATION] Route calculated',
-          `From: ${route.start}`,
-          `To: ${route.destination}`,
-          `Raw path: ${route.points.join(' -> ')}`,
-          `Branch distances: ${route.directions.map((direction) => `${direction.distanceMeters.toFixed(4)}m`).join(' + ')}`,
-          `Total: ${route.distanceMeters.toFixed(2)} m`,
-          `Collapsed instructions: ${route.instructions.map((instruction) => `${instruction.distanceMeters.toFixed(2)}m ${instruction.direction}`).join(' | ')}`,
+          '[NAVIGATION] Route Found',
+          `  From: ${route.start}`,
+          `  To: ${route.destination}`,
+          `  Nodes: ${route.points.join(' \u2192 ')}`,
+          `  Distance: ${route.distanceMeters.toFixed(2)} m`,
         ].join('\n'),
       );
     } catch (error) {
       setRoute(null);
-      setRouteMessage(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setRouteMessage(message);
+      navigationLogger.error(
+        'NavigationRoute',
+        [
+          '[NAVIGATION] ROUTE FAILED',
+          `  From: ${startId}`,
+          `  To: ${nextDestinationId}`,
+          `  ${startId} exists in graph: ${graph.has(startId)}`,
+          `  ${nextDestinationId} exists in graph: ${graph.has(nextDestinationId)}`,
+        ].join('\n'),
+      );
     }
   }, [availableDestinations, setRoute]);
 
@@ -202,30 +260,6 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     setRouteMessage(null);
     routeDeviationRef.current = false;
   }, [setRoute]);
-
-  useEffect(() => {
-    if (!entrance || !modelFrame || !initialPosition) return;
-
-    navigationLogger.info(
-      'NavigationEntrance',
-      [
-        '[NAVIGATION] Entrance initialized',
-        `  JSON / navigation: X=${entrance.x.toFixed(3)}m Y=${entrance.y.toFixed(4)}m`,
-        `  THREE.js world: X=${initialPosition.x.toFixed(3)}m Y=${initialPosition.y.toFixed(3)}m Z=${initialPosition.z.toFixed(3)}m`,
-      ].join('\n'),
-    );
-
-    const insideModelBounds =
-      initialPosition.x >= modelFrame.bounds.min.x &&
-      initialPosition.x <= modelFrame.bounds.max.x &&
-      initialPosition.z >= modelFrame.bounds.min.z &&
-      initialPosition.z <= modelFrame.bounds.max.z;
-    if (!insideModelBounds) {
-      const message = 'The Entrance maps outside the active GLB bounds. The navigation JSON and rendered model origins do not currently align.';
-      setAlignmentWarning(message);
-      navigationLogger.warn('NavigationAlignment', message);
-    }
-  }, [entrance, initialPosition, modelFrame]);
 
   const observePlayerPosition = useCallback((position: THREE.Vector3) => {
     if (worldPoints.length === 0) return;
@@ -361,7 +395,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     debugEnabled: NAVIGATION_DEBUG_ENABLED,
     initialPosition,
     loadError,
-    alignmentWarning,
+    alignmentWarning: null,
     worldPoints,
     observePlayerPosition,
     navigationPoints: navigation?.points ?? [],

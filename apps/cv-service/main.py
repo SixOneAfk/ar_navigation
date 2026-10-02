@@ -26,24 +26,6 @@ except Exception:  # pragma: no cover
 app = FastAPI(title="Nav_Ar CV Service", version="1.0.0")
 
 
-KNOWN_SIGNAGE = {
-    "101": "N101",
-    "ROOM101": "N101",
-    "102": "N103",
-    "ROOM102": "N103",
-    "STAIRSF2": "N104",
-    "201": "N201",
-    "ROOM201": "N201",
-}
-
-MARKER_COORDINATES = {
-    "N101": {"x": 2.4, "y": 1.6, "z": -1.2, "floor": 1},
-    "N103": {"x": 6.0, "y": 1.6, "z": 0.4, "floor": 1},
-    "N104": {"x": 8.3, "y": 1.6, "z": 3.1, "floor": 1},
-    "N201": {"x": 1.2, "y": 1.6, "z": 5.8, "floor": 2},
-}
-
-
 class EstimatedPosition(BaseModel):
     x: float
     y: float
@@ -155,51 +137,17 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", text.upper())
 
 
-def _score_match(candidate: str, known: str) -> float:
-    if not candidate or not known:
-        return 0.0
-    if candidate == known:
-        return 1.0
-
-    previous_row = list(range(len(known) + 1))
-    for candidate_index, candidate_char in enumerate(candidate, start=1):
-        current_row = [candidate_index]
-        for known_index, known_char in enumerate(known, start=1):
-            insertion = current_row[known_index - 1] + 1
-            deletion = previous_row[known_index] + 1
-            substitution = previous_row[known_index - 1] + (candidate_char != known_char)
-            current_row.append(min(insertion, deletion, substitution))
-        previous_row = current_row
-
-    distance = previous_row[-1]
-    return 1.0 - distance / max(len(candidate), len(known))
-
-
 def _match_node(candidates: list[tuple[str, float]]) -> tuple[Optional[str], Optional[str], float]:
-    best_node: Optional[str] = None
     best_text: Optional[str] = None
-    best_score = 0.0
+    best_confidence = 0.0
 
     for raw_text, ocr_conf in candidates:
         normalized = _normalize_text(raw_text)
-        if not normalized:
-            continue
+        if normalized and ocr_conf > best_confidence:
+            best_text = normalized
+            best_confidence = ocr_conf
 
-        if normalized in KNOWN_SIGNAGE:
-            confidence = max(ocr_conf, 0.4)
-            return KNOWN_SIGNAGE[normalized], normalized, confidence
-
-        for known, node_id in KNOWN_SIGNAGE.items():
-            score = _score_match(normalized, known) * ocr_conf
-            if score > best_score:
-                best_score = score
-                best_node = node_id
-                best_text = normalized
-
-    if best_score >= 0.4:
-        return best_node, best_text, best_score
-
-    return None, None, 0.0
+    return None, best_text, best_confidence
 
 
 def _build_ranked_candidates(candidates: list[tuple[str, float]]) -> list[dict[str, float | str]]:
@@ -232,10 +180,10 @@ def recalibrate_position(payload: RecalibrateRequest) -> RecalibrateResponse:
     matched_node_id, detected_text, confidence = _match_node(candidates)
     ranked_candidates = _build_ranked_candidates(candidates)
 
-    marker_position = MARKER_COORDINATES.get(matched_node_id) if matched_node_id else None
+    marker_position = None
     failure_reason: Optional[str] = None
     if matched_node_id is None:
-        failure_reason = "no_text_candidates" if len(ranked_candidates) == 0 else "no_confident_match"
+        failure_reason = "no_text_candidates" if len(ranked_candidates) == 0 else "no_navigation_point_mapping"
 
     return RecalibrateResponse(
         recalibrated=matched_node_id is not None,

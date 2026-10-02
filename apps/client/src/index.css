@@ -216,6 +216,19 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+.compass-widget__diagnostics {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(61, 83, 119, 0.24);
+  border-radius: 6px;
+  color: #334864;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .compass-widget__confidence {
   height: 8px;
   margin-top: 0.55rem;

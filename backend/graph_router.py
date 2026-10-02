@@ -1,55 +1,71 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import networkx as nx
-from typing import List, Dict, Optional
+from pathlib import Path
+from typing import List, Dict
+import json
 import math
 
-app = FastAPI(title="Nav_Ar 3D Graph Router", version="1.0.0")
+app = FastAPI(title="Nav_Ar Building Graph Router", version="1.0.0")
+NAVIGATION_JSON_PATH = Path(__file__).resolve().parents[1] / "apps" / "client" / "public" / "building_navigation.json"
 
-# 3D Node Representation: id -> (x, y, floor, node_tag)
-# Note: floor is used to calculate Z (floor * height_multiplier)
-NODES_DB: Dict[str, Dict] = {
-    "N101": {"x": 0.0, "y": 0.0, "floor": 1, "tag": "ROOM_101"},
-    "N102": {"x": 12.5, "y": 0.0, "floor": 1, "tag": "HALLWAY_CORNER_1"},
-    "N103": {"x": 12.5, "y": 15.0, "floor": 1, "tag": "ROOM_102"},
-    "N104": {"x": 12.5, "y": 15.0, "floor": 2, "tag": "STAIRWELL_FL2"},
-    "N201": {"x": 0.0, "y": 15.0, "floor": 2, "tag": "ROOM_201"},
-}
 
-FLOOR_HEIGHT = 4.0  # Meters per floor
-FLOOR_CHANGE_PENALTY = 10.0  # Extra weight for using stairs/elevators
+def load_navigation_graph() -> nx.Graph:
+    try:
+        content = NAVIGATION_JSON_PATH.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeError(f"Navigation JSON could not be read at {NAVIGATION_JSON_PATH}: {error}") from error
 
-# Graph initialization
-graph = nx.Graph()
+    try:
+        navigation = json.loads(content.lstrip("\ufeff"))
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"Navigation JSON could not be parsed: {error}") from error
 
-def calculate_3d_distance(n1_id: str, n2_id: str) -> float:
-    n1, n2 = NODES_DB[n1_id], NODES_DB[n2_id]
-    dx = n1["x"] - n2["x"]
-    dy = n1["y"] - n2["y"]
-    dz = (n1["floor"] - n2["floor"]) * FLOOR_HEIGHT
-    
-    dist = math.sqrt(dx**2 + dy**2 + dz**2)
-    
-    # Add penalty for floor change
-    if n1["floor"] != n2["floor"]:
-        dist += FLOOR_CHANGE_PENALTY
-        
-    return dist
+    if not isinstance(navigation, dict):
+        raise RuntimeError("Navigation data must be a JSON object.")
+    points = navigation.get("points")
+    branches = navigation.get("branches")
+    if not isinstance(points, list):
+        raise RuntimeError("Navigation data is missing the points array.")
+    if not isinstance(branches, list):
+        raise RuntimeError("Navigation data is missing the branches array.")
 
-# Populate nodes
-for node_id, data in NODES_DB.items():
-    graph.add_node(node_id, **data)
+    graph = nx.Graph()
+    point_ids = set()
+    for index, point in enumerate(points):
+        if not isinstance(point, dict) or not isinstance(point.get("id"), str) or not point["id"]:
+            raise RuntimeError(f"points[{index}].id must be a non-empty string.")
+        if point["id"] in point_ids:
+            raise RuntimeError(f"Duplicate navigation point ID: {point['id']}.")
+        point_ids.add(point["id"])
+        for coordinate in ("x", "y"):
+            value = point.get(coordinate)
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise RuntimeError(f"points[{index}].{coordinate} must be a finite number.")
+        graph.add_node(point["id"], **point)
 
-# Define edges
-edges = [
-    ("N101", "N102"),
-    ("N102", "N103"),
-    ("N103", "N104"), # This represents a stair/elevator to floor 2
-    ("N104", "N201"),
-]
+    branch_ids = set()
+    for index, branch in enumerate(branches):
+        if not isinstance(branch, dict) or not isinstance(branch.get("id"), str) or not branch["id"]:
+            raise RuntimeError(f"branches[{index}].id must be a non-empty string.")
+        if branch["id"] in branch_ids:
+            raise RuntimeError(f"Duplicate navigation branch ID: {branch['id']}.")
+        branch_ids.add(branch["id"])
+        for endpoint in ("from", "to"):
+            if branch.get(endpoint) not in point_ids:
+                raise RuntimeError(
+                    f"branches[{index}] ({branch['id']}) references nonexistent point "
+                    f"{branch.get(endpoint)!r} in {endpoint}."
+                )
+        distance = branch.get("distance")
+        if not isinstance(distance, (int, float)) or not math.isfinite(distance) or distance <= 0:
+            raise RuntimeError(f"branches[{index}].distance must be a finite positive number.")
+        graph.add_edge(branch["from"], branch["to"], weight=distance, branch_id=branch["id"])
 
-for u, v in edges:
-    graph.add_edge(u, v, weight=calculate_3d_distance(u, v))
+    return graph
+
+
+graph = load_navigation_graph()
 
 class PathRequest(BaseModel):
     start_node: str
@@ -72,13 +88,9 @@ def compute_route(request: PathRequest):
         )
     
     try:
-        # A* heuristic: straight-line 3D distance
-        def heuristic(u, v):
-            return calculate_3d_distance(u, v)
-
-        path = nx.astar_path(graph, request.start_node, request.target_node, heuristic=heuristic, weight="weight")
+        path = nx.shortest_path(graph, request.start_node, request.target_node, weight="weight", method="dijkstra")
         total_dist = nx.path_weight(graph, path, weight="weight")
-        nodes_detail = [{"id": n, **NODES_DB[n]} for n in path]
+        nodes_detail = [{"id": n, **graph.nodes[n]} for n in path]
         
         return PathResponse(
             path=path,

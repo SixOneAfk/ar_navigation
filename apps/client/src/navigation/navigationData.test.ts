@@ -16,15 +16,23 @@ const navigationFixture = {
     margin: 5,
     wall_clearance: 0.2,
     movement: { diagonal: true },
-    coordinate_system: { x: 'Blender World X', y: 'Blender World Y' },
+    coordinate_system: {
+      type: 'building_local',
+      reference_object: 'Plane',
+      x: 'Building local X',
+      y: 'Building local Y',
+    },
   },
   points: [{ id: 'test-node', row: 0, column: 0, x: 1.25, y: -2 }],
+  branches: [],
 };
 
 const modelFrame: ModelSceneFrame = {
   center: { x: -83.336, y: 3.005, z: 14.008 },
   floorHeight: 0.9225,
   position: { x: 0, y: -0.5, z: -4 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
   bounds: {
     min: { x: -20.741, y: -2.003, z: -23.636 },
     max: { x: 20.741, y: 2.003, z: 15.636 },
@@ -37,7 +45,12 @@ describe('navigation data', () => {
 
     expect(navigation.building).toBe('Test Building');
     expect(navigation.grid.cell_size).toBe(1);
-    expect(navigation.grid.coordinate_system).toEqual({ x: 'Blender World X', y: 'Blender World Y' });
+    expect(navigation.grid.coordinate_system).toEqual({
+      type: 'building_local',
+      reference_object: 'Plane',
+      x: 'Building local X',
+      y: 'Building local Y',
+    });
     expect(navigation.points).toHaveLength(1);
   });
 
@@ -56,31 +69,39 @@ describe('navigation data', () => {
     expect(() => parseBuildingNavigation(JSON.stringify(duplicateFixture))).toThrow('Duplicate navigation point ID');
   });
 
-  it('keeps valid branches and reports invalid branch references without crashing', () => {
-    const navigation = parseBuildingNavigation(JSON.stringify({
+  it('requires branches and reports invalid branch references and duplicate branch IDs', () => {
+    expect(() => parseBuildingNavigation(JSON.stringify({
+      building: 'Test Building',
+      grid: navigationFixture.grid,
+      points: navigationFixture.points,
+    }))).toThrow('missing the branches array');
+
+    expect(() => parseBuildingNavigation(JSON.stringify({
       ...navigationFixture,
       branches: [
-        { from: 'test-node', to: 'test-node', distance: 1 },
-        { from: 'missing', to: 'test-node', distance: 1 },
-        { from: 'test-node', to: 'missing', distance: 1 },
-        { from: 'test-node', to: 'test-node', distance: 0 },
+        { id: 'B0', from: 'missing', to: 'test-node', distance: 1 },
       ],
-    }));
+    }))).toThrow('B0) references nonexistent point "missing"');
 
-    expect(navigation.branches).toEqual([{ from: 'test-node', to: 'test-node', distance: 1 }]);
-    expect(navigation.invalidBranches).toHaveLength(3);
+    expect(() => parseBuildingNavigation(JSON.stringify({
+      ...navigationFixture,
+      branches: [
+        { id: 'B0', from: 'test-node', to: 'test-node', distance: 1 },
+        { id: 'B0', from: 'test-node', to: 'test-node', distance: 1 },
+      ],
+    }))).toThrow('Duplicate navigation branch ID: B0');
   });
 
-  it('maps Blender X/Y through the GLB centered frame without changing scale', () => {
+  it('rotates Blender vertex coordinates into the GLB baked orientation before centering', () => {
     const position = navigationPointToThreePosition(
       navigationFixture.points[0],
       modelFrame,
       1.6,
     );
 
-    expect(position.x).toBeCloseTo(84.586);
+    expect(position.x).toBeCloseTo(116.876169);
     expect(position.y).toBe(1.1);
-    expect(position.z).toBeCloseTo(-16.008);
+    expect(position.z).toBeCloseTo(-29.435019);
   });
 
   it('uses horizontal distance and retains the current point while it remains in range', () => {

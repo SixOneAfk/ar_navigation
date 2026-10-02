@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
-  FLOOR_CHANGE_PENALTY,
-  FLOOR_HEIGHT_METERS,
   GraphEdge,
   GraphNode,
   Neighbor,
@@ -25,25 +23,23 @@ export class GraphService {
     return {
       nodeSchema: {
         type: 'object',
-        required: ['id', 'x', 'y', 'floor'],
+        required: ['id', 'x', 'y', 'row', 'column'],
         properties: {
           id: { type: 'string' },
           x: { type: 'number' },
           y: { type: 'number' },
-          floor: { type: 'integer' },
-          tag: { type: 'string' },
+          row: { type: 'integer' },
+          column: { type: 'integer' },
         },
       },
       edgeSchema: {
         type: 'object',
-        required: ['from', 'to', 'edgeType'],
+        required: ['id', 'from', 'to', 'distance'],
         properties: {
+          id: { type: 'string' },
           from: { type: 'string' },
           to: { type: 'string' },
-          edgeType: {
-            type: 'string',
-            enum: ['corridor', 'stairs', 'elevator'],
-          },
+          distance: { type: 'number' },
         },
       },
     };
@@ -121,29 +117,11 @@ export class GraphService {
         continue;
       }
 
-      const weight = this.calculateEdgeWeight(fromNode, toNode, edge.edgeType);
-      adjacency.get(edge.from)?.push({ to: edge.to, weight });
-      adjacency.get(edge.to)?.push({ to: edge.from, weight });
+      adjacency.get(edge.from)?.push({ to: edge.to, weight: edge.distance });
+      adjacency.get(edge.to)?.push({ to: edge.from, weight: edge.distance });
     }
 
     return adjacency;
-  }
-
-  private calculateEdgeWeight(
-    fromNode: GraphNode,
-    toNode: GraphNode,
-    edgeType: GraphEdge['edgeType'],
-  ): number {
-    const dx = fromNode.x - toNode.x;
-    const dy = fromNode.y - toNode.y;
-    const dz = (fromNode.floor - toNode.floor) * FLOOR_HEIGHT_METERS;
-    let weight = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    if (fromNode.floor !== toNode.floor || edgeType !== 'corridor') {
-      weight += FLOOR_CHANGE_PENALTY;
-    }
-
-    return weight;
   }
 
   private heuristic(nodeId: string, targetId: string): number {
@@ -156,8 +134,7 @@ export class GraphService {
 
     const dx = node.x - target.x;
     const dy = node.y - target.y;
-    const dz = (node.floor - target.floor) * FLOOR_HEIGHT_METERS;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return Math.hypot(dx, dy);
   }
 
   private aStar(startNode: string, targetNode: string): string[] {

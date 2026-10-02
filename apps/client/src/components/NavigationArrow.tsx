@@ -65,51 +65,67 @@ function getTargetPointId(route: NavigationPath, currentPointId: string | null) 
   return instruction?.to ?? route.points[Math.min(routeIndex + 1, route.points.length - 1)] ?? route.destination;
 }
 
-function getRouteProgress(
+export function getRouteProgress(
   route: NavigationPath,
-  currentPointId: string | null,
   playerPosition: THREE.Vector3,
-  points: WorldNavigationPoint[],
+  pointPositions: ReadonlyMap<string, THREE.Vector3>,
 ) {
-  const routeIndex = getRouteIndex(route, currentPointId);
-  const nextPointId = route.points[routeIndex + 1] ?? route.destination;
-  const start = points.find((point) => point.id === route.points[routeIndex])?.position;
-  const end = points.find((point) => point.id === nextPointId)?.position;
-  const segmentDistance = route.directions[routeIndex]?.distanceMeters ?? 0;
-  let segmentProgress = 0;
+  // Find where the player actually is along the route by projecting the live position onto
+  // every segment, instead of trusting currentPointId (the nearest of ALL navigation points,
+  // which is frequently off-route and would otherwise freeze progress at route index 0).
+  const cumulativeDistance: number[] = [0];
+  for (const direction of route.directions) {
+    cumulativeDistance.push(cumulativeDistance[cumulativeDistance.length - 1] + direction.distanceMeters);
+  }
 
-  if (currentPointId && start && end) {
+  let bestIndex = 0;
+  let bestDistanceSquared = Number.POSITIVE_INFINITY;
+  let bestProgress = 0;
+
+  for (let index = 0; index < route.points.length - 1; index += 1) {
+    const start = pointPositions.get(route.points[index]);
+    const end = pointPositions.get(route.points[index + 1]);
+    if (!start || !end) continue;
+
     const segmentX = end.x - start.x;
     const segmentZ = end.z - start.z;
     const lengthSquared = segmentX * segmentX + segmentZ * segmentZ;
-    if (lengthSquared > 0) {
-      const travelledWorldDistance = THREE.MathUtils.clamp(
+    const progress = lengthSquared > 0
+      ? THREE.MathUtils.clamp(
         ((playerPosition.x - start.x) * segmentX + (playerPosition.z - start.z) * segmentZ) / lengthSquared,
         0,
         1,
-      ) * Math.sqrt(lengthSquared);
-      segmentProgress = THREE.MathUtils.clamp(
-        travelledWorldDistance / Math.sqrt(lengthSquared),
-        0,
-        1,
-      );
+      )
+      : 0;
+
+    const projectedX = start.x + segmentX * progress;
+    const projectedZ = start.z + segmentZ * progress;
+    const deltaX = playerPosition.x - projectedX;
+    const deltaZ = playerPosition.z - projectedZ;
+    const distanceSquared = deltaX * deltaX + deltaZ * deltaZ;
+
+    if (distanceSquared < bestDistanceSquared) {
+      bestDistanceSquared = distanceSquared;
+      bestIndex = index;
+      bestProgress = progress;
     }
   }
 
-  const followingDistance = route.directions
-    .slice(routeIndex)
-    .reduce((total, direction) => total + direction.distanceMeters, 0);
-  const remainingDistance = currentPointId
-    ? Math.max(0, followingDistance - segmentDistance * segmentProgress)
-    : route.distanceMeters;
+  const nextPointId = route.points[bestIndex + 1] ?? route.destination;
+  const segmentDistance = route.directions[bestIndex]?.distanceMeters ?? 0;
+  const distanceToNext = segmentDistance * (1 - bestProgress);
+  const traveledMeters = cumulativeDistance[bestIndex] + segmentDistance * bestProgress;
+  const remainingDistance = Math.max(0, route.distanceMeters - traveledMeters);
 
   return {
-    routeIndex,
+    routeIndex: bestIndex,
     nextPointId,
     segmentDistance,
+    distanceToNext,
     remainingDistance,
   };
 }
+
 
 export function NavigationArrow({
   route,
@@ -155,6 +171,10 @@ export function NavigationArrow({
   const pulseTimeRef = useRef(0);
   const readoutElapsedRef = useRef(0);
   const [readout, setReadout] = useState(INITIAL_READOUT);
+  const pointPositions = useMemo(
+    () => new Map(points.map((point) => [point.id, point.position])),
+    [points],
+  );
 
   useEffect(() => {
     if (!assetLoggedRef.current) {
@@ -226,7 +246,19 @@ export function NavigationArrow({
       const targetDirection = Math.atan2(targetVectorRef.current.x, -targetVectorRef.current.z) * 180 / Math.PI;
       const cameraForward = localTargetRef.current.set(0, 0, -1).applyQuaternion(camera.quaternion);
       const playerHeading = Math.atan2(cameraForward.x, -cameraForward.z) * 180 / Math.PI;
-      const routeProgress = getRouteProgress(route, currentPointId, camera.position, points);
+      const routeProgress = getRouteProgress(route, camera.position, pointPositions);
+      if (debugEnabled) {
+        console.info(
+          [
+            '[NAVIGATION] LIVE DISTANCE',
+            `  Player: X=${camera.position.x.toFixed(2)} Y=${camera.position.y.toFixed(2)} Z=${camera.position.z.toFixed(2)}`,
+            `  Current Point: ${currentPointId ?? 'NONE'}`,
+            `  Next Point: ${routeProgress.nextPointId}`,
+            `  Distance To Next: ${routeProgress.distanceToNext.toFixed(1)}m`,
+            `  Remaining Route: ${routeProgress.remainingDistance.toFixed(1)}m`,
+          ].join('\n'),
+        );
+      }
       setReadout({
         route: route.points.join(' -> '),
         currentPoint: currentPointId ?? 'NONE',

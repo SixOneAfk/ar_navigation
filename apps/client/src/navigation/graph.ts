@@ -50,6 +50,8 @@ export type NavigationGraphStats = {
   graphEdges: number;
 };
 
+export type DiagonalBranchHandler = (branch: BuildingNavigation['branches'][number]) => void;
+
 class MinHeap<T> {
   private values: Array<{ priority: number; value: T }> = [];
 
@@ -128,7 +130,10 @@ function collapseDirections(directions: NavigationDirection[]): NavigationInstru
   return instructions;
 }
 
-export function buildNavigationGraph(navigation: BuildingNavigation): NavigationGraph {
+export function buildNavigationGraph(
+  navigation: BuildingNavigation,
+  onDiagonalBranchRejected?: DiagonalBranchHandler,
+): NavigationGraph {
   const graph: NavigationGraph = new Map();
 
   for (const point of navigation.points) {
@@ -141,7 +146,10 @@ export function buildNavigationGraph(navigation: BuildingNavigation): Navigation
     if (!from || !to) continue;
     const dx = to.point.x - from.point.x;
     const dy = to.point.y - from.point.y;
-    if (!ALLOW_DIAGONAL_NAVIGATION && Math.abs(dx) > 1e-5 && Math.abs(dy) > 1e-5) continue;
+    if (!ALLOW_DIAGONAL_NAVIGATION && Math.abs(dx) > 1e-5 && Math.abs(dy) > 1e-5) {
+      onDiagonalBranchRejected?.(branch);
+      continue;
+    }
 
     from.edges.push({ from: branch.from, to: branch.to, distanceMeters: branch.distance });
     if (BRANCHES_ARE_BIDIRECTIONAL) {
@@ -214,6 +222,7 @@ export function directionRelativeToHeading(
   to: NavigationPoint,
   headingDegrees: number,
 ): CardinalDirection {
+  // atan2(east, north) yields compass bearings: north 0, east 90, south 180, west 270.
   const angle = Math.atan2(to.x - from.x, to.y - from.y) * 180 / Math.PI;
   const relativeAngle = ((angle - headingDegrees + 540) % 360) - 180;
   if (relativeAngle >= -45 && relativeAngle < 45) return 'FORWARD';
@@ -222,14 +231,16 @@ export function directionRelativeToHeading(
   return 'BACKWARD';
 }
 
-export function getNavigationGraphStats(navigation: BuildingNavigation): NavigationGraphStats {
-  const graph = buildNavigationGraph(navigation);
+export function getNavigationGraphStats(
+  navigation: BuildingNavigation,
+  onDiagonalBranchRejected?: DiagonalBranchHandler,
+): NavigationGraphStats {
+  let diagonalBranchesExcluded = 0;
+  const graph = buildNavigationGraph(navigation, (branch) => {
+    diagonalBranchesExcluded += 1;
+    onDiagonalBranchRejected?.(branch);
+  });
   const validBranches = navigation.branches.length;
-  const diagonalBranchesExcluded = navigation.branches.filter((branch) => {
-    const from = navigation.points.find((point) => point.id === branch.from);
-    const to = navigation.points.find((point) => point.id === branch.to);
-    return from && to && Math.abs(from.x - to.x) > 1e-5 && Math.abs(from.y - to.y) > 1e-5;
-  }).length;
   return {
     points: navigation.points.length,
     branches: validBranches + (navigation.invalidBranches?.length ?? 0),

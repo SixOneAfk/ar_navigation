@@ -95,7 +95,7 @@ The first EasyOCR request can take longer while the reader initializes and model
 
 ## Optional notes
 
-- The client expects a model at `apps/client/public/model.glb` if you want the 3D corridor model.
+- The client loads the building model from `apps/client/public/Floor 1_Rotated_Points.glb`.
 - If you only want to demo the web UI, `npm run start:dev:all` is usually enough.
-- Route query API through gateway: `POST /api/v1/position/route` from the frontend, or `POST http://localhost:3000/api/v1/position/route` directly, with `{ "startNode": "N101", "targetNode": "N201" }`.
+- Route query API through gateway: `POST /api/v1/position/route` from the frontend, or `POST http://localhost:3000/api/v1/position/route` directly, with `{ "startNode": "P0", "targetNode": "P2" }`.
 - OCR recalibration API through gateway: `POST /api/v1/cv/scan` from the frontend, or `POST http://localhost:3000/api/v1/cv/scan` directly, with task payload contract fields (`session_id`, `timestamp`, `estimated_position`, `image_payload`).

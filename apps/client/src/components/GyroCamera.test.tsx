@@ -90,6 +90,40 @@ describe('GyroCamera', () => {
     expect(camera.position.z).toBeLessThan(startZ);
   });
 
+  it('uses the activation heading as the camera rotation baseline', () => {
+    const orientationRef: RefObject<Orientation> = {
+      current: { alpha: 90, beta: 0, gamma: 0 },
+    };
+    const motionRef: RefObject<MotionData> = {
+      current: { x: 0, y: 0, z: 0, timestamp: 16 },
+    };
+    const view = render(
+      <GyroCamera
+        orientationRef={orientationRef}
+        motionRef={motionRef}
+        active
+        moveMode="buttons"
+      />,
+    );
+
+    expect(camera.quaternion.angleTo(new THREE.Quaternion())).toBeCloseTo(0);
+
+    const turnedOrientationRef: RefObject<Orientation> = {
+      current: { alpha: 120, beta: 0, gamma: 0 },
+    };
+    view.rerender(
+      <GyroCamera
+        orientationRef={turnedOrientationRef}
+        motionRef={motionRef}
+        active
+        moveMode="buttons"
+      />,
+    );
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    expect(forward.x).toBeLessThan(0);
+  });
+
   it('keeps gyro mode orientation-only without tilt translation', () => {
     const orientationRef: RefObject<Orientation> = {
       current: { alpha: 0, beta: 42, gamma: 38 },

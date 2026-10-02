@@ -17,7 +17,7 @@ import type { ModelSceneFrame } from './navigation/navigationData';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
-const MODEL_PATH = '/model.floor1-graph-test1.glb';
+const MODEL_PATH = '/Floor%201_Rotated_Points.glb';
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
@@ -178,6 +178,8 @@ export default function App() {
         headingRef={headingRef}
         orientationRef={orientationRef}
         enabled={gyroActive}
+        activeRoute={navigation.activeRoute}
+        currentPointId={navigation.currentPointId}
         isOpen={openPanel === 'compass'}
         onToggle={() => togglePanel('compass')}
       />
