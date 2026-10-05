@@ -106,6 +106,11 @@ class StructuralLinesEndpointTests(unittest.TestCase):
         }
         detect_mock.return_value = {
             "detected": True,
+            "floor_boundaries": [{
+                "line": {"x1": 0.1, "y1": 0.7, "x2": 0.9, "y2": 0.7},
+                "angle_deg": 0.0,
+                "confidence": 0.9,
+            }],
             "floor_boundary": {"x1": 0.1, "y1": 0.7, "x2": 0.9, "y2": 0.7},
             "boundary_angle_deg": 0.0,
             "boundary_confidence": 0.9,
@@ -113,7 +118,15 @@ class StructuralLinesEndpointTests(unittest.TestCase):
             "roll_confidence": 0.9,
             "wall_outline": wall_outline,
             "wall_confidence": 0.84,
+            "wall_outlines": [{
+                "outline": wall_outline,
+                "confidence": 0.84,
+                "floor_boundary_index": 0,
+            }],
             "wall_candidate_count": 2,
+            "wall_detection_skipped": False,
+            "wall_detection_reason": None,
+            "device_pitch_deg": 12.5,
             "candidate_count": 8,
             "vertical_candidate_count": 4,
             "image_width": 640,
@@ -148,6 +161,7 @@ class StructuralLinesEndpointTests(unittest.TestCase):
             session_id="test-session",
             timestamp=1,
             image_payload=_jpeg_payload(),
+            device_pitch_deg=12.5,
             estimated_position={"x": 0.0, "y": 1.6, "z": 0.0},
             camera_intrinsics={
                 "fx": 554.256,
@@ -169,6 +183,7 @@ class StructuralLinesEndpointTests(unittest.TestCase):
             self.fail("Expected a diagnostic pose estimate")
         self.assertTrue(response.pose_estimate.diagnostic_only)
         self.assertAlmostEqual(response.pose_estimate.delta.horizontal_m, 0.424)
+        self.assertEqual(detect_mock.call_args.args[1], 12.5)
         pose_mock.assert_called_once_with(
             wall_outline,
             corners,

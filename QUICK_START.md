@@ -87,11 +87,9 @@ ngrok http https://localhost:5173
 
 Use the ngrok HTTPS URL on the phone. In dev mode, the frontend now proxies same-origin `/api/*` requests to the gateway on `http://localhost:3000`, so the phone only needs one public URL.
 
-Open the Camera panel and select `Enable Camera`. The client captures centered 640x480 JPEG frames at up to five frames per second and sends them as base64 JSON to `POST /api/v1/cv/structural-lines`. Requests never overlap, so slower processing cannot create a frame queue.
+Select `Enable Gyro` before enabling the camera so pitch-aware wall tracking is available. Then open the Camera panel and select `Enable Camera`. The client captures centered 640x480 JPEG frames at up to five frames per second and sends them as base64 JSON to `POST /api/v1/cv/structural-lines`. Requests never overlap, so slower processing cannot create a frame queue.
 
-The detected floor-wall boundary is drawn over the live video. The panel also shows the boundary confidence, boundary angle, estimated camera roll, roll confidence, candidate counts, CV processing time, and full round-trip time. Stable high-confidence roll estimates are used as a bounded correction for the Three.js camera orientation.
-
-If the computer or virtual machine has no camera device, select `Upload Image` or `Use Demo Image` in the same panel. These actions keep using the OCR recalibration flow through `POST /api/v1/cv/scan`.
+Up to three connected floor-wall boundaries and wall outlines are drawn over the live video. The panel also shows boundary confidence, camera pitch and roll, candidate counts, CV processing time, and full round-trip time. Stable high-confidence roll estimates are used as a bounded correction for the Three.js camera orientation. When the camera points more than 30 degrees down, wall-pose estimation pauses while floor and roll tracking continue.
 
 The first OCR request can take longer while EasyOCR initializes and downloads model files to its local cache. Live structural-line tracking does not initialize or run EasyOCR.
 

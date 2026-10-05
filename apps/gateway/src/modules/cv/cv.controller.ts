@@ -31,6 +31,11 @@ type RecalibrationResult = {
 
 type StructuralLinesResult = {
   detected: boolean;
+  floor_boundaries?: Array<{
+    line: { x1: number; y1: number; x2: number; y2: number };
+    angle_deg: number;
+    confidence: number;
+  }>;
   floor_boundary: {
     x1: number;
     y1: number;
@@ -41,6 +46,16 @@ type StructuralLinesResult = {
   boundary_confidence: number;
   camera_roll_deg: number | null;
   roll_confidence: number;
+  wall_outline?: Record<string, { x: number; y: number }> | null;
+  wall_confidence?: number;
+  wall_outlines?: Array<{
+    outline: Record<string, { x: number; y: number }>;
+    confidence: number;
+    floor_boundary_index: number;
+  }>;
+  wall_detection_skipped?: boolean;
+  wall_detection_reason?: string | null;
+  device_pitch_deg?: number | null;
   candidate_count: number;
   vertical_candidate_count: number;
   image_width: number;
@@ -79,6 +94,7 @@ export class CvController {
       timestamp: dto.timestamp ?? Date.now(),
       image_payload: imagePayload,
       device_roll_deg: dto.device_roll_deg,
+      device_pitch_deg: dto.device_pitch_deg,
       estimated_position: dto.estimated_position,
       camera_intrinsics: dto.camera_intrinsics,
       wall_reference: dto.wall_reference,

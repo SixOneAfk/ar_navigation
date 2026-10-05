@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   mapCapturedPointToCover,
+  shouldDisplayWallOutline,
   wallOutlineSegments,
 } from './StructuralLineOverlay';
 
@@ -72,5 +73,17 @@ describe('wallOutlineSegments', () => {
       [outline.top_left, outline.bottom_left],
       [outline.top_right, outline.bottom_right],
     ]);
+  });
+});
+
+describe('shouldDisplayWallOutline', () => {
+  it('hides wall outlines below two percent confidence', () => {
+    expect(shouldDisplayWallOutline(0)).toBe(false);
+    expect(shouldDisplayWallOutline(0.0199)).toBe(false);
+  });
+
+  it('keeps wall outlines at or above two percent confidence', () => {
+    expect(shouldDisplayWallOutline(0.02)).toBe(true);
+    expect(shouldDisplayWallOutline(0.8)).toBe(true);
   });
 });

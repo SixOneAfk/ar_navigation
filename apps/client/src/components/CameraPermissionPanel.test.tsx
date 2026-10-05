@@ -73,6 +73,33 @@ describe('CameraPermissionPanel', () => {
     vi.restoreAllMocks();
   });
 
+  it('toggles model visibility from the camera controls', () => {
+    const onModelVisibilityChange = vi.fn();
+    const { rerender } = render(
+      <CameraPermissionPanel
+        isOpen
+        onClose={vi.fn()}
+        modelVisible
+        onModelVisibilityChange={onModelVisibilityChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Model' }));
+    expect(onModelVisibilityChange).toHaveBeenLastCalledWith(false);
+
+    rerender(
+      <CameraPermissionPanel
+        isOpen
+        onClose={vi.fn()}
+        modelVisible={false}
+        onModelVisibilityChange={onModelVisibilityChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show Model' }));
+    expect(onModelVisibilityChange).toHaveBeenLastCalledWith(true);
+  });
+
   it('explains when no camera device is available', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
@@ -130,6 +157,18 @@ describe('CameraPermissionPanel', () => {
           sequenceNumber: 1,
           structuralLines: {
             detected: true,
+            floor_boundaries: [
+              {
+                line: { x1: 0.1, y1: 0.68, x2: 0.5, y2: 0.58 },
+                angle_deg: -10.6,
+                confidence: 0.88,
+              },
+              {
+                line: { x1: 0.5, y1: 0.58, x2: 0.9, y2: 0.7 },
+                angle_deg: 12.7,
+                confidence: 0.81,
+              },
+            ],
             floor_boundary: {
               x1: 0.1,
               y1: 0.68,
@@ -152,7 +191,20 @@ describe('CameraPermissionPanel', () => {
               bottom_left: { x: 0.1, y: 0.68 },
             },
             wall_confidence: 0.84,
+            wall_outlines: [{
+              outline: {
+                top_left: { x: 0.2, y: 0.2 },
+                top_right: { x: 0.8, y: 0.2 },
+                bottom_right: { x: 0.9, y: 0.7 },
+                bottom_left: { x: 0.1, y: 0.68 },
+              },
+              confidence: 0.84,
+              floor_boundary_index: 0,
+            }],
             wall_candidate_count: 2,
+            wall_detection_skipped: false,
+            wall_detection_reason: null,
+            device_pitch_deg: 45,
             selected_wall_id: 'wall-front',
             pose_estimate: {
               position: { x: 0.3, y: 1.55, z: -0.3 },
@@ -180,6 +232,8 @@ describe('CameraPermissionPanel', () => {
       <CameraPermissionPanel
         isOpen
         onClose={vi.fn()}
+        orientationRef={{ current: { beta: 45, gamma: 2.5 } }}
+        orientationActive
         modelFrame={modelFrame}
         cameraPoseRef={cameraPoseRef}
         wallReferences={wallReferences}
@@ -198,7 +252,7 @@ describe('CameraPermissionPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enable Camera' }));
 
     expect(
-      await screen.findByText('Floor boundary detected (88%).'),
+      await screen.findByText('2 floor boundaries detected (88%).'),
     ).toBeTruthy();
     expect(screen.getByText('3.2 ms')).toBeTruthy();
     expect(screen.getByText('CV position estimate')).toBeTruthy();
@@ -215,6 +269,8 @@ describe('CameraPermissionPanel', () => {
     expect(requestBody).toMatchObject({
       image_payload: 'data:image/jpeg;base64,live-frame',
       sequence_number: 1,
+      device_roll_deg: 2.5,
+      device_pitch_deg: 45,
       estimated_position: { x: 0, y: 1.6, z: 0 },
       wall_reference: {
         id: 'wall-front',

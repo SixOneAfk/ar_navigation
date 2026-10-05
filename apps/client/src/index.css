@@ -78,8 +78,43 @@ body,
 
 .compass-widget__title {
   margin: 0;
+  padding-right: 1.8rem;
   color: #1f2f47;
   font-size: 0.9rem;
+}
+
+.compass-widget__toggle {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(157, 178, 210, 0.9);
+  border-radius: 9px;
+  background: rgba(244, 248, 253, 0.94);
+  color: #25466e;
+  cursor: pointer;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.compass-widget__toggle:hover {
+  background: #fff;
+  color: #0e57cc;
+}
+
+.compass-widget__toggle--collapsed {
+  top: 1rem;
+  right: 0;
+  z-index: 24;
+  width: 34px;
+  height: 48px;
+  border-right: 0;
+  border-radius: 12px 0 0 12px;
+  backdrop-filter: blur(8px);
 }
 
 .compass-widget__dial {

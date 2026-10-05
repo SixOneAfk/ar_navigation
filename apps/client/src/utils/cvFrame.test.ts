@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cameraIntrinsicsFromHorizontalFov,
+  cameraPitchFromDeviceOrientation,
   captureImageJpeg,
   captureJpegFrame,
   CV_FRAME_HEIGHT,
@@ -8,6 +9,18 @@ import {
   sendCvFrame,
   sendStructuralLineFrame,
 } from './cvFrame';
+
+describe('cameraPitchFromDeviceOrientation', () => {
+  it('measures downward pitch from an upright portrait phone', () => {
+    expect(cameraPitchFromDeviceOrientation(90, 0)).toBeCloseTo(0);
+    expect(cameraPitchFromDeviceOrientation(60, 0)).toBeCloseTo(30);
+    expect(cameraPitchFromDeviceOrientation(45, 0)).toBeCloseTo(45);
+  });
+
+  it('does not infer pitch in landscape orientation', () => {
+    expect(cameraPitchFromDeviceOrientation(60, 90)).toBeUndefined();
+  });
+});
 
 describe('captureJpegFrame', () => {
   it('crops the video and creates a 640x480 JPEG', () => {
@@ -197,6 +210,7 @@ describe('sendStructuralLineFrame', () => {
       7,
       {
         deviceRollDeg: 2.5,
+        devicePitchDeg: 35,
         estimatedPosition: { x: 1, y: 1.6, z: 2 },
         wallReference: {
           id: 'wall-0001',
@@ -221,6 +235,7 @@ describe('sendStructuralLineFrame', () => {
       session_id: 'phone-session',
       image_payload: 'data:image/jpeg;base64,frame',
       device_roll_deg: 2.5,
+      device_pitch_deg: 35,
       estimated_position: { x: 1, y: 1.6, z: 2 },
       wall_reference: { id: 'wall-0001' },
       reference_confidence: 0.82,

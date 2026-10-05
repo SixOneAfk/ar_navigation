@@ -2,8 +2,10 @@ import { useEffect, useRef, type RefObject } from 'react';
 import {
   CV_FRAME_HEIGHT,
   CV_FRAME_WIDTH,
+  type FloorBoundaryDetection,
   type NormalizedLine,
   type WallOutline,
+  type WallOutlineDetection,
   type StructuralLinesResult,
 } from '../utils/cvFrame';
 
@@ -22,6 +24,15 @@ type StructuralLineOverlayProps = {
   result: StructuralLinesResult | null;
   active: boolean;
 };
+
+export const MIN_VISIBLE_WALL_CONFIDENCE = 0.02;
+
+export function shouldDisplayWallOutline(confidence: number): boolean {
+  return (
+    Number.isFinite(confidence)
+    && confidence >= MIN_VISIBLE_WALL_CONFIDENCE
+  );
+}
 
 export function mapCapturedPointToCover(
   point: Point,
@@ -124,34 +135,48 @@ export function StructuralLineOverlay({
   active,
 }: StructuralLineOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const targetRef = useRef<NormalizedLine | null>(null);
-  const currentRef = useRef<NormalizedLine | null>(null);
-  const confidenceRef = useRef(0);
+  const floorTargetsRef = useRef<FloorBoundaryDetection[]>([]);
+  const floorCurrentRef = useRef<NormalizedLine[]>([]);
   const lastDetectionAtRef = useRef(0);
-  const wallTargetRef = useRef<WallOutline | null>(null);
-  const wallCurrentRef = useRef<WallOutline | null>(null);
-  const wallConfidenceRef = useRef(0);
+  const wallTargetsRef = useRef<WallOutlineDetection[]>([]);
+  const wallCurrentRef = useRef<WallOutline[]>([]);
 
   useEffect(() => {
-    if (active && result?.detected && result.floor_boundary) {
-      targetRef.current = result.floor_boundary;
-      confidenceRef.current = result.boundary_confidence;
+    const floorTargets = result?.floor_boundaries?.length
+      ? result.floor_boundaries
+      : result?.detected && result.floor_boundary
+        ? [{
+            line: result.floor_boundary,
+            angle_deg: result.boundary_angle_deg ?? 0,
+            confidence: result.boundary_confidence,
+          }]
+        : [];
+    if (active && floorTargets.length > 0) {
+      floorTargetsRef.current = floorTargets;
       lastDetectionAtRef.current = performance.now();
-      if (!currentRef.current) {
-        currentRef.current = result.floor_boundary;
+      if (floorCurrentRef.current.length !== floorTargets.length) {
+        floorCurrentRef.current = floorTargets.map((target) => target.line);
       }
     } else {
-      targetRef.current = null;
+      floorTargetsRef.current = [];
     }
 
-    if (active && result?.wall_outline) {
-      wallTargetRef.current = result.wall_outline;
-      wallConfidenceRef.current = result.wall_confidence;
-      if (!wallCurrentRef.current) {
-        wallCurrentRef.current = result.wall_outline;
+    const wallTargets = (result?.wall_outlines?.length
+      ? result.wall_outlines
+      : result?.wall_outline
+        ? [{
+            outline: result.wall_outline,
+            confidence: result.wall_confidence,
+            floor_boundary_index: 0,
+          }]
+        : []).filter((target) => shouldDisplayWallOutline(target.confidence));
+    if (active && wallTargets.length > 0) {
+      wallTargetsRef.current = wallTargets;
+      if (wallCurrentRef.current.length !== wallTargets.length) {
+        wallCurrentRef.current = wallTargets.map((target) => target.outline);
       }
     } else {
-      wallTargetRef.current = null;
+      wallTargetsRef.current = [];
     }
   }, [active, result]);
 
@@ -186,7 +211,6 @@ export function StructuralLineOverlay({
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       context.clearRect(0, 0, viewportWidth, viewportHeight);
 
-      const target = targetRef.current;
       const sourceWidth = video.videoWidth;
       const sourceHeight = video.videoHeight;
       const canDraw = (
@@ -201,115 +225,124 @@ export function StructuralLineOverlay({
       const viewport = { width: viewportWidth, height: viewportHeight };
       const source = { width: sourceWidth, height: sourceHeight };
 
-      if (canDraw && target) {
-        currentRef.current = currentRef.current
-          ? interpolateLine(currentRef.current, target, smoothing)
-          : target;
-
-        const line = currentRef.current;
-        const start = mapCapturedPointToCover(
-          { x: line.x1, y: line.y1 },
-          source,
-          viewport,
-        );
-        const end = mapCapturedPointToCover(
-          { x: line.x2, y: line.y2 },
-          source,
-          viewport,
+      if (canDraw && floorTargetsRef.current.length > 0) {
+        floorCurrentRef.current = floorTargetsRef.current.map(
+          (target, index) => floorCurrentRef.current[index]
+            ? interpolateLine(floorCurrentRef.current[index], target.line, smoothing)
+            : target.line,
         );
         const ageMs = now - lastDetectionAtRef.current;
         const alpha = Math.max(0, Math.min(1, (1600 - ageMs) / 600));
-        const color = confidenceColor(confidenceRef.current);
+        floorCurrentRef.current.forEach((line, index) => {
+          const target = floorTargetsRef.current[index];
+          const start = mapCapturedPointToCover(
+            { x: line.x1, y: line.y1 },
+            source,
+            viewport,
+          );
+          const end = mapCapturedPointToCover(
+            { x: line.x2, y: line.y2 },
+            source,
+            viewport,
+          );
+          const color = confidenceColor(target.confidence);
 
-        context.save();
-        context.globalAlpha = alpha;
-        context.strokeStyle = color;
-        context.lineWidth = 4;
-        context.lineCap = 'round';
-        context.shadowColor = 'rgba(0, 0, 0, 0.7)';
-        context.shadowBlur = 6;
-        context.beginPath();
-        context.moveTo(start.x, start.y);
-        context.lineTo(end.x, end.y);
-        context.stroke();
+          context.save();
+          context.globalAlpha = alpha;
+          context.strokeStyle = color;
+          context.lineWidth = index === 0 ? 4 : 3;
+          context.lineCap = 'round';
+          context.shadowColor = 'rgba(0, 0, 0, 0.7)';
+          context.shadowBlur = 6;
+          context.beginPath();
+          context.moveTo(start.x, start.y);
+          context.lineTo(end.x, end.y);
+          context.stroke();
 
-        const label = `Floor boundary ${Math.round(confidenceRef.current * 100)}%`;
-        const labelX = Math.max(8, Math.min(viewportWidth - 170, start.x));
-        const labelY = Math.max(22, Math.min(viewportHeight - 8, start.y - 10));
-        context.shadowBlur = 0;
-        context.fillStyle = 'rgba(8, 18, 31, 0.82)';
-        context.fillRect(labelX - 5, labelY - 16, 166, 22);
-        context.fillStyle = color;
-        context.font = '600 12px Segoe UI, sans-serif';
-        context.fillText(label, labelX, labelY);
-        context.restore();
+          const label = `Floor ${index + 1} ${Math.round(target.confidence * 100)}%`;
+          const labelX = Math.max(8, Math.min(viewportWidth - 130, start.x));
+          const labelY = Math.max(
+            22,
+            Math.min(viewportHeight - 8, start.y - 10),
+          );
+          context.shadowBlur = 0;
+          context.fillStyle = 'rgba(8, 18, 31, 0.82)';
+          context.fillRect(labelX - 5, labelY - 16, 126, 22);
+          context.fillStyle = color;
+          context.font = '600 12px Segoe UI, sans-serif';
+          context.fillText(label, labelX, labelY);
+          context.restore();
+        });
       }
-      const wallTarget = wallTargetRef.current;
-      if (canDraw && wallTarget) {
-        wallCurrentRef.current = wallCurrentRef.current
-          ? interpolateWallOutline(
-            wallCurrentRef.current,
-            wallTarget,
-            smoothing,
-          )
-          : wallTarget;
-        const wallOutline = wallCurrentRef.current;
+      if (canDraw && wallTargetsRef.current.length > 0) {
+        wallCurrentRef.current = wallTargetsRef.current.map(
+          (target, index) => wallCurrentRef.current[index]
+            ? interpolateWallOutline(
+              wallCurrentRef.current[index],
+              target.outline,
+              smoothing,
+            )
+            : target.outline,
+        );
         const wallColor = '#35c8ff';
-        const mappedOutline: WallOutline = {
-          top_left: mapCapturedPointToCover(
-            wallOutline.top_left,
-            source,
-            viewport,
-          ),
-          top_right: mapCapturedPointToCover(
-            wallOutline.top_right,
-            source,
-            viewport,
-          ),
-          bottom_right: mapCapturedPointToCover(
-            wallOutline.bottom_right,
-            source,
-            viewport,
-          ),
-          bottom_left: mapCapturedPointToCover(
-            wallOutline.bottom_left,
-            source,
-            viewport,
-          ),
-        };
+        wallCurrentRef.current.forEach((wallOutline, index) => {
+          const target = wallTargetsRef.current[index];
+          const mappedOutline: WallOutline = {
+            top_left: mapCapturedPointToCover(
+              wallOutline.top_left,
+              source,
+              viewport,
+            ),
+            top_right: mapCapturedPointToCover(
+              wallOutline.top_right,
+              source,
+              viewport,
+            ),
+            bottom_right: mapCapturedPointToCover(
+              wallOutline.bottom_right,
+              source,
+              viewport,
+            ),
+            bottom_left: mapCapturedPointToCover(
+              wallOutline.bottom_left,
+              source,
+              viewport,
+            ),
+          };
 
-        context.save();
-        context.strokeStyle = wallColor;
-        context.lineWidth = 3;
-        context.lineCap = 'round';
-        context.shadowColor = 'rgba(0, 0, 0, 0.7)';
-        context.shadowBlur = 6;
-        context.beginPath();
-        for (const [edgeStart, edgeEnd] of wallOutlineSegments(mappedOutline)) {
-          context.moveTo(edgeStart.x, edgeStart.y);
-          context.lineTo(edgeEnd.x, edgeEnd.y);
-        }
-        context.stroke();
+          context.save();
+          context.strokeStyle = wallColor;
+          context.lineWidth = index === 0 ? 3 : 2;
+          context.lineCap = 'round';
+          context.shadowColor = 'rgba(0, 0, 0, 0.7)';
+          context.shadowBlur = 6;
+          context.beginPath();
+          for (const [edgeStart, edgeEnd] of wallOutlineSegments(mappedOutline)) {
+            context.moveTo(edgeStart.x, edgeStart.y);
+            context.lineTo(edgeEnd.x, edgeEnd.y);
+          }
+          context.stroke();
 
-        const wallLabelX = Math.max(
-          8,
-          Math.min(viewportWidth - 150, mappedOutline.top_left.x),
-        );
-        const wallLabelY = Math.max(
-          22,
-          Math.min(viewportHeight - 8, mappedOutline.top_left.y - 10),
-        );
-        context.shadowBlur = 0;
-        context.fillStyle = 'rgba(8, 18, 31, 0.82)';
-        context.fillRect(wallLabelX - 5, wallLabelY - 16, 146, 22);
-        context.fillStyle = wallColor;
-        context.font = '600 12px Segoe UI, sans-serif';
-        context.fillText(
-          `Wall outline ${Math.round(wallConfidenceRef.current * 100)}%`,
-          wallLabelX,
-          wallLabelY,
-        );
-        context.restore();
+          const wallLabelX = Math.max(
+            8,
+            Math.min(viewportWidth - 130, mappedOutline.top_left.x),
+          );
+          const wallLabelY = Math.max(
+            22,
+            Math.min(viewportHeight - 8, mappedOutline.top_left.y - 10),
+          );
+          context.shadowBlur = 0;
+          context.fillStyle = 'rgba(8, 18, 31, 0.82)';
+          context.fillRect(wallLabelX - 5, wallLabelY - 16, 126, 22);
+          context.fillStyle = wallColor;
+          context.font = '600 12px Segoe UI, sans-serif';
+          context.fillText(
+            `Wall ${index + 1} ${Math.round(target.confidence * 100)}%`,
+            wallLabelX,
+            wallLabelY,
+          );
+          context.restore();
+        });
       }
 
 

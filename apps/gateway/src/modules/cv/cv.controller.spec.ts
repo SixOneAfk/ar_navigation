@@ -129,6 +129,7 @@ describe('CvController', () => {
       timestamp: 123,
       image_payload: 'data:image/jpeg;base64,abc',
       device_roll_deg: 2.5,
+      device_pitch_deg: 18.0,
       estimated_position: { x: 1, y: 1.6, z: 2 },
       camera_intrinsics: {
         fx: 554.256,
@@ -171,6 +172,7 @@ describe('CvController', () => {
       timestamp: 123,
       image_payload: 'data:image/jpeg;base64,abc',
       device_roll_deg: 2.5,
+      device_pitch_deg: 18.0,
       estimated_position: { x: 1, y: 1.6, z: 2 },
       camera_intrinsics: {
         fx: 554.256,

@@ -104,6 +104,18 @@ class WallOutline(BaseModel):
     bottom_left: NormalizedPoint
 
 
+class FloorBoundaryDetection(BaseModel):
+    line: NormalizedLine
+    angle_deg: float
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class WallOutlineDetection(BaseModel):
+    outline: WallOutline
+    confidence: float = Field(ge=0.0, le=1.0)
+    floor_boundary_index: int = Field(ge=0)
+
+
 class WorldPoint(BaseModel):
     x: float
     y: float
@@ -150,6 +162,7 @@ class StructuralLinesRequest(BaseModel):
     timestamp: int
     image_payload: str
     device_roll_deg: Optional[float] = None
+    device_pitch_deg: Optional[float] = None
     estimated_position: Optional[WorldPoint] = None
     camera_intrinsics: Optional[CameraIntrinsics] = None
     wall_reference: Optional[WallReference] = None
@@ -159,6 +172,7 @@ class StructuralLinesRequest(BaseModel):
 
 class StructuralLinesResponse(BaseModel):
     detected: bool
+    floor_boundaries: list[FloorBoundaryDetection] = Field(default_factory=list)
     floor_boundary: Optional[NormalizedLine]
     boundary_angle_deg: Optional[float]
     boundary_confidence: float = Field(ge=0.0, le=1.0)
@@ -166,7 +180,11 @@ class StructuralLinesResponse(BaseModel):
     roll_confidence: float = Field(ge=0.0, le=1.0)
     wall_outline: Optional[WallOutline]
     wall_confidence: float = Field(ge=0.0, le=1.0)
+    wall_outlines: list[WallOutlineDetection] = Field(default_factory=list)
     wall_candidate_count: int
+    wall_detection_skipped: bool = False
+    wall_detection_reason: Optional[str] = None
+    device_pitch_deg: Optional[float] = None
     selected_wall_id: Optional[str] = None
     pose_estimate: Optional[CameraPoseEstimate] = None
     pose_failure_reason: Optional[str] = None
@@ -386,11 +404,22 @@ def health_check() -> dict[str, str]:
 @app.post("/api/v1/structural-lines", response_model=StructuralLinesResponse)
 def structural_lines(payload: StructuralLinesRequest) -> StructuralLinesResponse:
     image = _decode_image(payload.image_payload)
-    result = detect_structural_lines(image)
+    result = detect_structural_lines(image, payload.device_pitch_deg)
     pose_estimate: dict[str, Any] | None = None
     pose_failure_reason: str | None = None
+    wall_detections = result.get("wall_outlines") or []
+    if not wall_detections and result["wall_outline"] is not None:
+        wall_detections = [
+            {
+                "outline": result["wall_outline"],
+                "confidence": result["wall_confidence"],
+                "floor_boundary_index": 0,
+            }
+        ]
 
-    if result["wall_outline"] is None:
+    if result.get("wall_detection_skipped"):
+        pose_failure_reason = "wall_detection_skipped_phone_tilt"
+    elif not wall_detections:
         pose_failure_reason = "wall_outline_not_detected"
     elif payload.wall_reference is None:
         pose_failure_reason = "wall_reference_not_selected"
@@ -399,20 +428,40 @@ def structural_lines(payload: StructuralLinesRequest) -> StructuralLinesResponse
     elif payload.estimated_position is None:
         pose_failure_reason = "estimated_position_not_available"
     else:
-        pose_estimate, pose_failure_reason = estimate_camera_pose(
-            result["wall_outline"],
-            [
-                corner.model_dump()
-                for corner in payload.wall_reference.corners
-            ],
-            payload.camera_intrinsics.model_dump(),
-            payload.estimated_position.model_dump(),
-            result["image_width"],
-            result["image_height"],
-            result["wall_confidence"],
-            payload.reference_confidence,
-            payload.intrinsics_confidence,
-        )
+        failures: list[str] = []
+        for detection in wall_detections:
+            estimate, failure = estimate_camera_pose(
+                detection["outline"],
+                [
+                    corner.model_dump()
+                    for corner in payload.wall_reference.corners
+                ],
+                payload.camera_intrinsics.model_dump(),
+                payload.estimated_position.model_dump(),
+                result["image_width"],
+                result["image_height"],
+                detection["confidence"],
+                payload.reference_confidence,
+                payload.intrinsics_confidence,
+            )
+            if failure is not None:
+                failures.append(failure)
+            if estimate is None:
+                continue
+            if pose_estimate is None or (
+                estimate["confidence"],
+                -estimate["reprojection_error_px"],
+            ) > (
+                pose_estimate["confidence"],
+                -pose_estimate["reprojection_error_px"],
+            ):
+                pose_estimate = estimate
+        if pose_estimate is None:
+            pose_failure_reason = (
+                failures[0]
+                if failures
+                else "pose_solution_not_found"
+            )
 
     result["selected_wall_id"] = (
         payload.wall_reference.id

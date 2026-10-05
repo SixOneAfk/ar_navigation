@@ -33,6 +33,7 @@ export function CompassWidget({
 }: CompassWidgetProps) {
   const [heading, setHeading] = useState<HeadingData>(EMPTY_HEADING);
   const [rollDeg, setRollDeg] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -70,9 +71,32 @@ export function CompassWidget({
   const clampedRoll = Math.max(-45, Math.min(45, calibratedRollDeg));
   const signedRollText = `${calibratedRollDeg >= 0 ? '+' : ''}${calibratedRollDeg.toFixed(1)} deg`;
 
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="compass-widget__toggle compass-widget__toggle--collapsed"
+        onClick={() => setCollapsed(false)}
+        aria-label="Show heading overlay"
+        title="Show heading overlay"
+      >
+        ‹
+      </button>
+    );
+  }
+
   return (
     <section className="compass-widget" aria-live="polite" data-confidence={confidenceTone}>
       <h3 className="compass-widget__title">Heading</h3>
+      <button
+        type="button"
+        className="compass-widget__toggle"
+        onClick={() => setCollapsed(true)}
+        aria-label="Hide heading overlay"
+        title="Hide heading overlay"
+      >
+        ›
+      </button>
       <div className="compass-widget__dial" aria-label="Compass dial">
         <span className="compass-widget__north">N</span>
         <span className="compass-widget__east">E</span>

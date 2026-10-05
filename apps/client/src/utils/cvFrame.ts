@@ -74,6 +74,18 @@ export type WallOutline = {
   bottom_left: NormalizedPoint;
 };
 
+export type FloorBoundaryDetection = {
+  line: NormalizedLine;
+  angle_deg: number;
+  confidence: number;
+};
+
+export type WallOutlineDetection = {
+  outline: WallOutline;
+  confidence: number;
+  floor_boundary_index: number;
+};
+
 export type WorldPosition = {
   x: number;
   y: number;
@@ -95,6 +107,7 @@ export type CameraPoseEstimate = {
 
 export type StructuralLinesResult = {
   detected: boolean;
+  floor_boundaries?: FloorBoundaryDetection[];
   floor_boundary: NormalizedLine | null;
   boundary_angle_deg: number | null;
   boundary_confidence: number;
@@ -102,7 +115,11 @@ export type StructuralLinesResult = {
   roll_confidence: number;
   wall_outline: WallOutline | null;
   wall_confidence: number;
+  wall_outlines?: WallOutlineDetection[];
   wall_candidate_count: number;
+  wall_detection_skipped?: boolean;
+  wall_detection_reason?: string | null;
+  device_pitch_deg?: number | null;
   selected_wall_id: string | null;
   pose_estimate: CameraPoseEstimate | null;
   pose_failure_reason: string | null;
@@ -124,6 +141,7 @@ export type StructuralLinesResponse = {
 
 export type StructuralFrameMetadata = {
   deviceRollDeg?: number;
+  devicePitchDeg?: number;
   estimatedPosition?: WorldPosition;
   wallReference?: {
     id: string;
@@ -296,6 +314,21 @@ export function cameraIntrinsicsFromHorizontalFov(
   };
 }
 
+export function cameraPitchFromDeviceOrientation(
+  betaDeg: number,
+  screenAngleDeg = 0,
+): number | undefined {
+  if (!Number.isFinite(betaDeg) || !Number.isFinite(screenAngleDeg)) {
+    return undefined;
+  }
+  const screenRotation = ((screenAngleDeg % 360) + 360) % 360;
+  if (screenRotation === 90 || screenRotation === 270) {
+    return undefined;
+  }
+  const uprightBeta = screenRotation === 180 ? -betaDeg : betaDeg;
+  return Math.max(-90, Math.min(90, 90 - uprightBeta));
+}
+
 export async function sendStructuralLineFrame(
   imagePayload: string,
   sessionId: string,
@@ -315,6 +348,7 @@ export async function sendStructuralLineFrame(
       timestamp: Date.now(),
       image_payload: imagePayload,
       device_roll_deg: metadata.deviceRollDeg,
+      device_pitch_deg: metadata.devicePitchDeg,
       estimated_position: metadata.estimatedPosition,
       camera_intrinsics: cameraIntrinsics,
       wall_reference: metadata.wallReference,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
+  cameraPitchFromDeviceOrientation,
   captureJpegFrame,
   CV_FRAME_HEIGHT,
   STRUCTURAL_FRAME_INTERVAL_MS,
@@ -31,6 +32,8 @@ function poseFailureMessage(reason: string | null | undefined): string {
   switch (reason) {
     case 'wall_outline_not_detected':
       return 'Keep the complete wall visible, including its top and both sides.';
+    case 'wall_detection_skipped_phone_tilt':
+      return 'Wall pose paused while the camera points more than 30 degrees down.';
     case 'wall_reference_not_selected':
       return 'No model wall matches the current navigation view.';
     case 'camera_intrinsics_not_available':
@@ -55,7 +58,8 @@ function poseFailureMessage(reason: string | null | undefined): string {
 type CameraPermissionPanelProps = {
   isOpen: boolean;
   onClose: () => void;
-  orientationRef?: RefObject<{ gamma: number }>;
+  orientationRef?: RefObject<{ beta: number; gamma: number }>;
+  orientationActive?: boolean;
   onHorizonCorrectionResolved?: (payload: {
     cameraRollDeg: number;
     confidence: number;
@@ -64,17 +68,22 @@ type CameraPermissionPanelProps = {
   cameraPoseRef?: RefObject<CameraPoseSnapshot>;
   wallReferences?: WallReference[];
   wallReferenceError?: string | null;
+  modelVisible?: boolean;
+  onModelVisibilityChange?: (visible: boolean) => void;
 };
 
 export function CameraPermissionPanel({
   isOpen,
   onClose,
   orientationRef,
+  orientationActive = false,
   onHorizonCorrectionResolved,
   modelFrame,
   cameraPoseRef,
   wallReferences = [],
   wallReferenceError = null,
+  modelVisible = true,
+  onModelVisibilityChange,
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -105,6 +114,10 @@ export function CameraPermissionPanel({
         z: diagnosticPose.position.z - diagnosticPose.delta.z,
       }
     : null;
+  const floorBoundaryCount = structuralResult?.floor_boundaries?.length
+    ?? (structuralResult?.floor_boundary ? 1 : 0);
+  const wallOutlineCount = structuralResult?.wall_outlines?.length
+    ?? (structuralResult?.wall_outline ? 1 : 0);
 
 
   useEffect(() => {
@@ -196,6 +209,13 @@ export function CameraPermissionPanel({
 
     try {
       const cameraPose = cameraPoseRef?.current;
+      const orientation = orientationActive ? orientationRef?.current : undefined;
+      const devicePitchDeg = orientation
+        ? cameraPitchFromDeviceOrientation(
+          orientation.beta,
+          window.screen.orientation?.angle ?? 0,
+        )
+        : undefined;
       const selectedWall = modelFrame && cameraPose
         ? selectWallReference(wallReferences, modelFrame, cameraPose)
         : null;
@@ -204,7 +224,8 @@ export function CameraPermissionPanel({
         sessionIdRef.current,
         sequenceNumber,
         {
-          deviceRollDeg: orientationRef?.current?.gamma,
+          deviceRollDeg: orientation?.gamma,
+          devicePitchDeg,
           estimatedPosition: cameraPose?.position,
           wallReference: selectedWall
             ? {
@@ -396,6 +417,16 @@ export function CameraPermissionPanel({
             >
               Stop Camera
             </button>
+
+            {onModelVisibilityChange && (
+              <button
+                type="button"
+                className="camera-panel__btn camera-panel__btn--secondary"
+                onClick={() => onModelVisibilityChange(!modelVisible)}
+              >
+                {modelVisible ? 'Hide Model' : 'Show Model'}
+              </button>
+            )}
           </div>
 
           <p className="camera-panel__status" data-state={cameraState}>
@@ -423,7 +454,7 @@ export function CameraPermissionPanel({
                 {scanState === 'success' &&
                   cameraState === 'granted' &&
                   structuralResult?.detected &&
-                  `Floor boundary detected (${Math.round(structuralResult.boundary_confidence * 100)}%).`}
+                  `${floorBoundaryCount === 1 ? 'Floor boundary' : `${floorBoundaryCount} floor boundaries`} detected (${Math.round(structuralResult.boundary_confidence * 100)}%).`}
                 {scanState === 'success' &&
                   cameraState === 'granted' &&
                   !structuralResult?.detected &&
@@ -555,6 +586,10 @@ export function CameraPermissionPanel({
                   </div>
                   <dl className="camera-panel__result-grid">
                     <div>
+                      <dt>Floor boundaries</dt>
+                      <dd>{floorBoundaryCount}</dd>
+                    </div>
+                    <div>
                       <dt>Boundary angle</dt>
                       <dd>
                         {structuralResult.boundary_angle_deg === null
@@ -577,12 +612,28 @@ export function CameraPermissionPanel({
                       </dd>
                     </div>
                     <div>
+                      <dt>Wall outlines</dt>
+                      <dd>
+                        {structuralResult.wall_detection_skipped
+                          ? 'Paused by pitch'
+                          : wallOutlineCount}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>Wall outline confidence</dt>
                       <dd>
                         {Math.round(
                           (structuralResult.wall_confidence ?? 0) * 100,
                         )}
                         %
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Camera pitch</dt>
+                      <dd>
+                        {typeof structuralResult.device_pitch_deg === 'number'
+                          ? `${structuralResult.device_pitch_deg.toFixed(1)} deg`
+                          : 'N/A'}
                       </dd>
                     </div>
                     <div>

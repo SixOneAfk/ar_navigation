@@ -22,6 +22,7 @@ export class CvStructuralLinesDto {
   timestamp?: number;
   image_payload?: string;
   device_roll_deg?: number;
+  device_pitch_deg?: number;
   estimated_position?: WorldPointDto;
   camera_intrinsics?: CameraIntrinsicsDto;
   wall_reference?: WallReferenceDto;

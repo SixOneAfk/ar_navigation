@@ -234,6 +234,16 @@ def detect_wall_outline(
         ),
         floor_line,
     )
+    floor_min_x = min(floor_boundary["x1"], floor_boundary["x2"]) * width
+    floor_max_x = max(floor_boundary["x1"], floor_boundary["x2"]) * width
+    floor_range_margin = width * 0.08
+    vertical_lines = [
+        line
+        for line in vertical_lines
+        if floor_min_x - floor_range_margin
+        <= line["bottom"][0]
+        <= floor_max_x + floor_range_margin
+    ]
     top_lines = _deduplicate_top_lines(
         _rank_fitted_lines(
             top_segments,

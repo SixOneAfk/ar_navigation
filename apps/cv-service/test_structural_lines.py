@@ -19,6 +19,46 @@ def _structural_image(tilt_px: int = 0) -> np.ndarray:
     return image
 
 
+def _corner_image() -> np.ndarray:
+    image = np.full((480, 640, 3), 225, dtype=np.uint8)
+    cv2.line(image, (20, 410), (320, 285), (30, 30, 30), 6)
+    cv2.line(image, (320, 285), (620, 400), (30, 30, 30), 6)
+    cv2.line(image, (20, 80), (20, 410), (30, 30, 30), 6)
+    cv2.line(image, (320, 40), (320, 285), (30, 30, 30), 6)
+    cv2.line(image, (620, 90), (620, 400), (30, 30, 30), 6)
+    cv2.line(image, (20, 80), (320, 40), (30, 30, 30), 6)
+    cv2.line(image, (320, 40), (620, 90), (30, 30, 30), 6)
+    return image
+
+
+def _downward_view_image() -> np.ndarray:
+    image = np.full((480, 640, 3), 225, dtype=np.uint8)
+    cv2.line(image, (30, 95), (610, 105), (30, 30, 30), 6)
+    cv2.line(image, (100, 20), (100, 450), (30, 30, 30), 6)
+    cv2.line(image, (540, 20), (540, 450), (30, 30, 30), 6)
+    return image
+
+
+def _door_image() -> np.ndarray:
+    image = np.full((480, 640, 3), 225, dtype=np.uint8)
+    cv2.line(image, (20, 370), (620, 370), (30, 30, 30), 6)
+    cv2.rectangle(image, (190, 70), (500, 370), (30, 30, 30), 6)
+    cv2.line(image, (210, 250), (500, 340), (30, 30, 30), 6)
+    return image
+
+
+def _tiled_floor_image(wall_edges: bool = True) -> np.ndarray:
+    image = np.full((480, 640, 3), 225, dtype=np.uint8)
+    image[280:] = 195
+    cv2.line(image, (20, 280), (620, 280), (100, 100, 100), 4)
+    if wall_edges:
+        cv2.line(image, (80, 40), (80, 280), (30, 30, 30), 6)
+        cv2.line(image, (560, 40), (560, 280), (30, 30, 30), 6)
+    for row in (335, 390, 450):
+        cv2.line(image, (20, row), (620, row), (20, 20, 20), 8)
+    return image
+
+
 def _jpeg_payload(image: np.ndarray) -> str:
     encoded_ok, encoded = cv2.imencode(".jpg", image)
     if not encoded_ok:
@@ -53,6 +93,158 @@ class StructuralLineDetectorTests(unittest.TestCase):
         self.assertIsNotNone(result["camera_roll_deg"])
         self.assertAlmostEqual(result["camera_roll_deg"], -6.0, delta=1.5)
         self.assertGreater(result["roll_confidence"], 0.6)
+
+    def test_keeps_both_floor_edges_at_a_corner(self) -> None:
+        result = detect_structural_lines(_corner_image())
+
+        self.assertTrue(result["detected"])
+        self.assertGreaterEqual(len(result["floor_boundaries"]), 2)
+        angles = sorted(
+            boundary["angle_deg"]
+            for boundary in result["floor_boundaries"]
+        )
+        self.assertLess(angles[0], -10.0)
+        self.assertGreater(angles[-1], 10.0)
+
+    def test_rejects_door_lines_above_floor_boundary(self) -> None:
+        result = detect_structural_lines(_door_image())
+
+        self.assertTrue(result["detected"])
+        self.assertEqual(len(result["floor_boundaries"]), 1)
+        boundary = result["floor_boundaries"][0]["line"]
+        self.assertGreater(boundary["y1"], 0.72)
+        self.assertGreater(boundary["y2"], 0.72)
+
+    def test_keeps_corner_floor_edges_with_door_detail(self) -> None:
+        image = _corner_image()
+        cv2.line(image, (370, 170), (590, 355), (30, 30, 30), 6)
+
+        result = detect_structural_lines(image)
+
+        self.assertEqual(len(result["floor_boundaries"]), 2)
+        angles = sorted(
+            boundary["angle_deg"]
+            for boundary in result["floor_boundaries"]
+        )
+        self.assertLess(angles[0], -10.0)
+        self.assertGreater(angles[-1], 10.0)
+
+    def test_prefers_wall_junction_over_contrasting_tile_stripes(self) -> None:
+        result = detect_structural_lines(_tiled_floor_image())
+
+        self.assertTrue(result["detected"])
+        self.assertEqual(len(result["floor_boundaries"]), 1)
+        boundary = result["floor_boundaries"][0]["line"]
+        self.assertAlmostEqual(boundary["y1"], 280 / 480, delta=0.035)
+        self.assertAlmostEqual(boundary["y2"], 280 / 480, delta=0.035)
+
+    def test_preserves_tiled_wall_junction_under_perspective(self) -> None:
+        transform = cv2.getPerspectiveTransform(
+            np.float32([[0, 0], [639, 0], [639, 479], [0, 479]]),
+            np.float32([[75, 40], [560, 10], [630, 460], [10, 475]]),
+        )
+        image = cv2.warpPerspective(
+            _tiled_floor_image(),
+            transform,
+            (640, 480),
+            borderValue=(225, 225, 225),
+        )
+        image = main._decode_image(_jpeg_payload(image))
+        expected = cv2.perspectiveTransform(
+            np.float32([[[20, 280], [620, 280]]]),
+            transform,
+        )[0]
+
+        result = detect_structural_lines(image)
+
+        self.assertEqual(len(result["floor_boundaries"]), 1)
+        boundary = result["floor_boundaries"][0]["line"]
+        for index, endpoint in enumerate(expected, start=1):
+            self.assertAlmostEqual(boundary[f"x{index}"], endpoint[0] / 640, delta=0.035)
+            self.assertAlmostEqual(boundary[f"y{index}"], endpoint[1] / 480, delta=0.035)
+
+    def test_tracks_tiled_floor_while_downward_pitch_skips_walls(self) -> None:
+        image = cv2.warpAffine(
+            _tiled_floor_image(),
+            np.float32([[1, 0, 0], [0, 1, -140]]),
+            (640, 480),
+            borderValue=(195, 195, 195),
+        )
+
+        result = detect_structural_lines(image, device_pitch_deg=40.0)
+
+        self.assertTrue(result["wall_detection_skipped"])
+        self.assertEqual(len(result["floor_boundaries"]), 1)
+        boundary = result["floor_boundaries"][0]["line"]
+        self.assertAlmostEqual(boundary["y1"], 140 / 480, delta=0.035)
+        self.assertAlmostEqual(boundary["y2"], 140 / 480, delta=0.035)
+
+    def test_abstains_when_parallel_stripes_have_no_wall_evidence(self) -> None:
+        result = detect_structural_lines(_tiled_floor_image(wall_edges=False))
+
+        self.assertFalse(result["detected"])
+        self.assertEqual(result["floor_boundaries"], [])
+        self.assertIsNone(result["floor_boundary"])
+
+    def test_tile_grid_junctions_do_not_count_as_wall_evidence(self) -> None:
+        image = np.full((480, 640, 3), 225, dtype=np.uint8)
+        for row in (220, 330, 440):
+            cv2.line(image, (20, row), (620, row), (30, 30, 30), 6)
+        for column in (160, 480):
+            cv2.line(image, (column, 220), (column, 479), (30, 30, 30), 6)
+
+        result = detect_structural_lines(image)
+
+        self.assertFalse(result["detected"])
+        self.assertEqual(result["floor_boundaries"], [])
+
+    def test_preserves_corner_boundaries_with_floor_stripes(self) -> None:
+        image = _corner_image()
+        for row, left, right in ((340, 200, 460), (385, 85, 585), (445, 20, 620)):
+            cv2.line(image, (left, row), (right, row), (30, 30, 30), 6)
+
+        result = detect_structural_lines(image)
+
+        self.assertEqual(len(result["floor_boundaries"]), 2)
+        angles = sorted(
+            boundary["angle_deg"] for boundary in result["floor_boundaries"]
+        )
+        self.assertLess(angles[0], -10.0)
+        self.assertGreater(angles[1], 10.0)
+
+    def test_separates_two_wall_outlines_at_a_corner(self) -> None:
+        result = detect_structural_lines(_corner_image())
+
+        self.assertEqual(len(result["wall_outlines"]), 2)
+        self.assertEqual(
+            {
+                outline["floor_boundary_index"]
+                for outline in result["wall_outlines"]
+            },
+            {0, 1},
+        )
+        for detection in result["wall_outlines"]:
+            outline = detection["outline"]
+            bottom_width = (
+                outline["bottom_right"]["x"]
+                - outline["bottom_left"]["x"]
+            )
+            self.assertLess(bottom_width, 0.6)
+
+    def test_keeps_floor_detection_when_downward_pitch_skips_walls(self) -> None:
+        result = detect_structural_lines(
+            _downward_view_image(),
+            device_pitch_deg=40.0,
+        )
+
+        self.assertTrue(result["detected"])
+        self.assertGreaterEqual(len(result["floor_boundaries"]), 1)
+        self.assertTrue(result["wall_detection_skipped"])
+        self.assertEqual(
+            result["wall_detection_reason"],
+            "device_pitch_exceeds_wall_search_limit",
+        )
+        self.assertIsNone(result["wall_outline"])
 
 
 class StructuralLinesEndpointTests(unittest.TestCase):

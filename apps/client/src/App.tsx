@@ -68,6 +68,7 @@ export default function App() {
   const [verticalAxis, setVerticalAxis] = useState(0);
   const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
   const [modelFrame, setModelFrame] = useState<ModelSceneFrame | null>(null);
+  const [modelVisible, setModelVisible] = useState(true);
   const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
   const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
   const lastCvHorizonAppliedAtRef = useRef(0);
@@ -218,11 +219,14 @@ export default function App() {
         isOpen={openPanel === 'camera'}
         onClose={() => setOpenPanel(null)}
         orientationRef={orientationRef}
+        orientationActive={gyroActive}
         onHorizonCorrectionResolved={applyCvHorizonCorrection}
         modelFrame={modelFrame}
         cameraPoseRef={cameraPoseRef}
         wallReferences={wallReferences}
         wallReferenceError={wallReferenceError}
+        modelVisible={modelVisible}
+        onModelVisibilityChange={setModelVisible}
       />
 
 
@@ -546,12 +550,14 @@ export default function App() {
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[8, 12, 8]} intensity={1.2} />
 
-        <ModelScene
-          modelPath={MODEL_PATH}
-          enableModel
-          position={MODEL_SCENE_POSITION}
-          onModelFrame={setModelFrame}
-        />
+        {modelVisible && (
+          <ModelScene
+            modelPath={MODEL_PATH}
+            enableModel
+            position={MODEL_SCENE_POSITION}
+            onModelFrame={setModelFrame}
+          />
+        )}
 
         <NavigationTracker
           initialPosition={navigation.initialPosition}
