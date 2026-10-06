@@ -63,7 +63,7 @@ From the repo root, run the test suite:
 ```bash
 cd apps/cv-service
 source .venv/bin/activate
-python -m pytest test_main.py -v
+python -m pytest test_main.py test_structural_lines.py -v
 cd ../..
 ```
 
@@ -87,15 +87,16 @@ ngrok http https://localhost:5173
 
 Use the ngrok HTTPS URL on the phone. In dev mode, the frontend now proxies same-origin `/api/*` requests to the gateway on `http://localhost:3000`, so the phone only needs one public URL.
 
-Open the Camera panel and select `Enable Camera`. The client captures a centered 640x480 JPEG about once per second and sends it as base64 JSON to `POST /api/v1/cv/scan`. The panel shows the latest matched navigation node and confidence. Requests never overlap, so a slower OCR inference does not create a frame queue.
+Select `Enable Gyro` before enabling the camera so pitch-aware wall tracking is available. Then open the Camera panel and select `Enable Camera`. The client captures centered 640x480 JPEG frames at up to five frames per second and sends them as base64 JSON to `POST /api/v1/cv/structural-lines`. Requests never overlap, so slower processing cannot create a frame queue.
 
-If the computer or virtual machine has no camera device, select `Upload Image` or `Use Demo Image` in the same panel. Uploaded images are converted in the browser to the same 640x480 JPEG payload and pass through the full Gateway and CV-service flow.
+Up to three connected floor-wall boundaries and wall outlines are drawn over the live video. The panel also shows boundary confidence, camera pitch and roll, candidate counts, CV processing time, and full round-trip time. Stable high-confidence roll estimates are used as a bounded correction for the Three.js camera orientation. When the camera points more than 30 degrees down, wall-pose estimation pauses while floor and roll tracking continue.
 
-The first EasyOCR request can take longer while the reader initializes and model files are downloaded to the local EasyOCR cache. Later requests reuse the cached reader.
+The first OCR request can take longer while EasyOCR initializes and downloads model files to its local cache. Live structural-line tracking does not initialize or run EasyOCR.
 
 ## Optional notes
 
 - The client loads the building model from `apps/client/public/Floor 1_Rotated_Points.glb`.
 - If you only want to demo the web UI, `npm run start:dev:all` is usually enough.
-- Route query API through gateway: `POST /api/v1/position/route` from the frontend, or `POST http://localhost:3000/api/v1/position/route` directly, with `{ "startNode": "P0", "targetNode": "P2" }`.
+- Route query API through gateway: `POST /api/v1/position/route` from the frontend, or `POST http://localhost:3000/api/v1/position/route` directly, with `{ "startNode": "N101", "targetNode": "N201" }`.
+- Structural-line API through gateway: `POST /api/v1/cv/structural-lines` from the frontend, or `POST http://localhost:3000/api/v1/cv/structural-lines` directly.
 - OCR recalibration API through gateway: `POST /api/v1/cv/scan` from the frontend, or `POST http://localhost:3000/api/v1/cv/scan` directly, with task payload contract fields (`session_id`, `timestamp`, `estimated_position`, `image_payload`).

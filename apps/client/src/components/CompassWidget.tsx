@@ -44,9 +44,6 @@ export function CompassWidget({
   horizonOffsetDeg,
   onCalibrateHorizon,
   onResetHorizon,
-  horizonOffsetDeg,
-  onCalibrateHorizon,
-  onResetHorizon,
   activeRoute = null,
   currentPointId = null,
   isOpen = true,
@@ -118,7 +115,7 @@ export function CompassWidget({
 
   return (
     <section className="compass-widget" aria-live="polite" data-confidence={confidenceTone}>
-      <button type="button" className="compass-widget__collapse-toggle compass-widget__title" onClick={onToggle} aria-expanded={true}>
+      <button type="button" className="compass-widget__collapse-toggle compass-widget__title" onClick={onToggle} aria-expanded>
         <span aria-hidden="true">▾</span> Compass
       </button>
       <div className="compass-widget__dial" aria-label="Compass dial">

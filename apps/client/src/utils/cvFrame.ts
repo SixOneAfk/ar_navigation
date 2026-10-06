@@ -1,6 +1,7 @@
 export const CV_FRAME_WIDTH = 640;
 export const CV_FRAME_HEIGHT = 480;
 export const CV_FRAME_INTERVAL_MS = 1000;
+export const STRUCTURAL_FRAME_INTERVAL_MS = 200;
 const JPEG_QUALITY = 0.8;
 
 export type RecalibrationResult = {
@@ -52,6 +53,103 @@ export type CvScanResponse = {
     reason: string;
     candidateDistanceM: number;
   };
+};
+
+export type NormalizedLine = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
+
+export type NormalizedPoint = {
+  x: number;
+  y: number;
+};
+
+export type WallOutline = {
+  top_left: NormalizedPoint;
+  top_right: NormalizedPoint;
+  bottom_right: NormalizedPoint;
+  bottom_left: NormalizedPoint;
+};
+
+export type FloorBoundaryDetection = {
+  line: NormalizedLine;
+  angle_deg: number;
+  confidence: number;
+};
+
+export type WallOutlineDetection = {
+  outline: WallOutline;
+  confidence: number;
+  floor_boundary_index: number;
+};
+
+export type WorldPosition = {
+  x: number;
+  y: number;
+  z: number;
+};
+
+export type CameraPoseEstimate = {
+  position: WorldPosition;
+  delta: WorldPosition & {
+    horizontal_m: number;
+    distance_m: number;
+  };
+  confidence: number;
+  reprojection_error_px: number;
+  distance_to_wall_m: number;
+  method: string;
+  diagnostic_only: boolean;
+};
+
+export type StructuralLinesResult = {
+  detected: boolean;
+  floor_boundaries?: FloorBoundaryDetection[];
+  floor_boundary: NormalizedLine | null;
+  boundary_angle_deg: number | null;
+  boundary_confidence: number;
+  camera_roll_deg: number | null;
+  roll_confidence: number;
+  wall_outline: WallOutline | null;
+  wall_confidence: number;
+  wall_outlines?: WallOutlineDetection[];
+  wall_candidate_count: number;
+  wall_detection_skipped?: boolean;
+  wall_detection_reason?: string | null;
+  device_pitch_deg?: number | null;
+  selected_wall_id: string | null;
+  pose_estimate: CameraPoseEstimate | null;
+  pose_failure_reason: string | null;
+  candidate_count: number;
+  vertical_candidate_count: number;
+  image_width: number;
+  image_height: number;
+  processing_time_ms: number;
+};
+
+export type StructuralLinesResponse = {
+  status: string;
+  source: string;
+  receivedAt: string;
+  frameId: string;
+  sequenceNumber: number;
+  structuralLines: StructuralLinesResult;
+};
+
+export type StructuralFrameMetadata = {
+  deviceRollDeg?: number;
+  devicePitchDeg?: number;
+  estimatedPosition?: WorldPosition;
+  wallReference?: {
+    id: string;
+    corners: [WorldPosition, WorldPosition, WorldPosition, WorldPosition];
+  };
+  referenceConfidence?: number;
+  horizontalFovDeg?: number;
+  intrinsicsConfidence?: number;
 };
 
 export type CvScanMetadata = {
@@ -186,4 +284,88 @@ export async function sendCvFrame(
   }
 
   return (await response.json()) as CvScanResponse;
+}
+
+export function cameraIntrinsicsFromHorizontalFov(
+  horizontalFovDeg: number,
+): {
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  distortion: [number, number, number, number, number];
+} {
+  if (
+    !Number.isFinite(horizontalFovDeg)
+    || horizontalFovDeg < 30
+    || horizontalFovDeg > 120
+  ) {
+    throw new Error('Horizontal camera FOV must be between 30 and 120 degrees');
+  }
+  const fx = CV_FRAME_WIDTH / (
+    2 * Math.tan((horizontalFovDeg * Math.PI) / 360)
+  );
+  return {
+    fx,
+    fy: fx,
+    cx: CV_FRAME_WIDTH / 2,
+    cy: CV_FRAME_HEIGHT / 2,
+    distortion: [0, 0, 0, 0, 0],
+  };
+}
+
+export function cameraPitchFromDeviceOrientation(
+  betaDeg: number,
+  screenAngleDeg = 0,
+): number | undefined {
+  if (!Number.isFinite(betaDeg) || !Number.isFinite(screenAngleDeg)) {
+    return undefined;
+  }
+  const screenRotation = ((screenAngleDeg % 360) + 360) % 360;
+  if (screenRotation === 90 || screenRotation === 270) {
+    return undefined;
+  }
+  const uprightBeta = screenRotation === 180 ? -betaDeg : betaDeg;
+  return Math.max(-90, Math.min(90, 90 - uprightBeta));
+}
+
+export async function sendStructuralLineFrame(
+  imagePayload: string,
+  sessionId: string,
+  sequenceNumber: number,
+  metadata: StructuralFrameMetadata = {},
+  signal?: AbortSignal,
+): Promise<StructuralLinesResponse> {
+  const frameId = `structural-${sequenceNumber}`;
+  const cameraIntrinsics = cameraIntrinsicsFromHorizontalFov(
+    metadata.horizontalFovDeg ?? 60,
+  );
+  const response = await fetch('/api/v1/cv/structural-lines', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      timestamp: Date.now(),
+      image_payload: imagePayload,
+      device_roll_deg: metadata.deviceRollDeg,
+      device_pitch_deg: metadata.devicePitchDeg,
+      estimated_position: metadata.estimatedPosition,
+      camera_intrinsics: cameraIntrinsics,
+      wall_reference: metadata.wallReference,
+      reference_confidence: metadata.referenceConfidence ?? 0,
+      intrinsics_confidence: metadata.intrinsicsConfidence ?? 0.35,
+      frame_id: frameId,
+      sequence_number: sequenceNumber,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(
+      `Gateway returned HTTP ${response.status}${responseText ? `: ${responseText}` : ''}`,
+    );
+  }
+
+  return (await response.json()) as StructuralLinesResponse;
 }

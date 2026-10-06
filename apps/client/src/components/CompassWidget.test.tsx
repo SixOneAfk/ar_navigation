@@ -32,6 +32,9 @@ describe('CompassWidget sensor diagnostics', () => {
         headingRef={headingRef}
         orientationRef={orientationRef}
         enabled
+        horizonOffsetDeg={0}
+        onCalibrateHorizon={() => undefined}
+        onResetHorizon={() => undefined}
         currentPointId="Entrance"
         activeRoute={{
           start: 'Entrance',

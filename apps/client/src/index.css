@@ -107,6 +107,7 @@ body,
 
 .compass-widget__title {
   margin: 0;
+  padding-right: 1.8rem;
   color: #1f2f47;
   font-size: 0.9rem;
 }
@@ -351,6 +352,15 @@ body,
   display: none;
 }
 
+.structural-line-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .ar-canvas {
   position: absolute !important;
   inset: 0;
@@ -402,17 +412,6 @@ body,
   flex-wrap: wrap;
 }
 
-.camera-panel__file-actions {
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.camera-panel__file-input {
-  display: none;
-}
-
 .camera-panel__btn {
   border: none;
   border-radius: 10px;
@@ -431,10 +430,6 @@ body,
 .camera-panel__btn--secondary {
   background: #e4eaf3;
   color: #23324a;
-}
-
-.camera-panel__btn--demo {
-  background: #0a7a4b;
 }
 
 .camera-panel__status {
@@ -460,29 +455,6 @@ body,
   background: rgba(232, 238, 249, 0.85);
 }
 
-.camera-panel__preview {
-  margin: 0 0 0.65rem;
-}
-
-.camera-panel__preview img {
-  display: block;
-  width: 100%;
-  max-height: 150px;
-  object-fit: contain;
-  border-radius: 8px;
-  background: #fff;
-  border: 1px solid #ced8e6;
-}
-
-.camera-panel__preview figcaption {
-  margin-top: 0.3rem;
-  overflow: hidden;
-  color: #50627d;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .camera-panel__scan-status,
 .camera-panel__scan-count {
   margin: 0;
@@ -491,6 +463,58 @@ body,
 
 .camera-panel__result {
   margin-top: 0.65rem;
+}
+.camera-panel__result--pose {
+  padding: 0.65rem;
+  border: 1px solid rgba(53, 200, 255, 0.55);
+  border-radius: 9px;
+  background: rgba(226, 247, 255, 0.72);
+}
+
+.camera-panel__diagnostics {
+  margin-top: 0.65rem;
+  border-top: 1px solid rgba(80, 98, 125, 0.22);
+}
+
+.camera-panel__diagnostics summary {
+  padding-top: 0.55rem;
+  color: #344b69;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.camera-panel__diagnostics summary:hover {
+  color: #12688b;
+}
+
+.camera-panel__diagnostic-note {
+  margin: 0.6rem 0 0;
+  color: #405574;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.camera-panel__diagnostic-note[data-state='pending'] {
+  color: #7a5a16;
+}
+
+.camera-panel__diagnostic-note[data-state='error'] {
+  color: #a01616;
+}
+
+.camera-panel__calibration-control {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  color: #344b69;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.camera-panel__calibration-control input {
+  width: 100%;
+  accent-color: #1689b6;
 }
 
 .camera-panel__confidence-label {

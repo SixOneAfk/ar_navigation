@@ -4,11 +4,13 @@ import * as THREE from 'three';
 import type { HeadingData, MotionData, Orientation } from '../hooks/useGyroscope';
 import type { JoystickValue } from './VirtualJoystick';
 import { createDebugLogger } from '../utils/debugLogger';
+import type { CameraPoseSnapshot } from '../utils/wallReferences';
 
 /** One Three.js world unit represents one real-world meter. */
 export const DEFAULT_MOVEMENT_SPEED_MPS = 1.5;
 const CAMERA_HEIGHT_METERS = 1.2;
 const MAX_DEBUG_HEIGHT_METERS = 3.4;
+const MAX_CAMERA_ROLL_DEG = 22;
 const VERTICAL_SPEED_MULTIPLIER = 0.7;
 const DEFAULT_WALK_CADENCE_HZ = 2;
 const MIN_WALK_SPEED_MPS = 0.6;
@@ -45,13 +47,14 @@ type GyroCameraProps = {
   joystick?: JoystickValue;
   verticalAxis?: number;
   debugVerticalEnabled?: boolean;
+  horizonOffsetDeg?: number;
   stepCount?: number;
   stepStrideMeters?: number;
   sensitivity?: number;
   movementSpeedMetersPerSecond?: number;
   calibrationTarget?: { x: number; y: number; z: number };
   calibrationMoveActive?: boolean;
-  onPoseChange?: (position: { x: number; y: number; z: number }) => void;
+  onPoseChange?: (pose: CameraPoseSnapshot) => void;
   onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
 
@@ -66,6 +69,7 @@ export function GyroCamera({
   joystick = { x: 0, y: 0 },
   verticalAxis = 0,
   debugVerticalEnabled = false,
+  horizonOffsetDeg = 0,
   stepCount = 0,
   stepStrideMeters = 0.65,
   calibrationTarget,
@@ -117,10 +121,20 @@ export function GyroCamera({
       headingRef?.current?.fusedHeadingDeg ?? orientation.alpha;
     const baseHeading = baseHeadingRef.current ?? activeHeading;
     const relativeAlpha = ((activeHeading - baseHeading + 540) % 360) - 180;
+    const calibratedRollDeg = THREE.MathUtils.clamp(
+      orientation.gamma - horizonOffsetDeg,
+      -MAX_CAMERA_ROLL_DEG,
+      MAX_CAMERA_ROLL_DEG,
+    );
 
     logger.current.debug('GyroCamera', `baseHeading=${baseHeading.toFixed(2)} relativeAlpha=${relativeAlpha.toFixed(2)}`);
 
-    euler.current.set(0, THREE.MathUtils.degToRad(relativeAlpha), 0, 'YXZ');
+    euler.current.set(
+      0,
+      THREE.MathUtils.degToRad(relativeAlpha),
+      THREE.MathUtils.degToRad(-calibratedRollDeg),
+      'YXZ',
+    );
     targetQ.current.setFromEuler(euler.current);
     camera.quaternion.slerp(targetQ.current, 0.12);
 
@@ -226,7 +240,23 @@ export function GyroCamera({
       z: motion?.z ?? 0,
     });
 
-    onPoseChange?.({ x: camera.position.x, y: camera.position.y, z: camera.position.z });
+    onPoseChange?.({
+      position: {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z,
+      },
+      forward: {
+        x: moveDirection.current.x,
+        y: moveDirection.current.y,
+        z: moveDirection.current.z,
+      },
+      right: {
+        x: strafeDirection.current.x,
+        y: strafeDirection.current.y,
+        z: strafeDirection.current.z,
+      },
+    });
   });
 
   return null;

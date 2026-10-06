@@ -1,20 +1,13 @@
-import { Suspense, useEffect, useRef, type RefObject } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Html, useGLTF } from '@react-three/drei';
-import { GroupProps, useFrame } from '@react-three/fiber';
+import type { GroupProps } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { ModelSceneFrame } from '../navigation/navigationData';
-import type { Orientation } from '../hooks/useGyroscope';
-
-const MAX_MODEL_TILT_DEG = 22;
-const MODEL_TILT_SMOOTHING = 0.12;
 
 type ModelSceneProps = {
   modelPath: string;
   enableModel?: boolean;
   onModelFrame?: (frame: ModelSceneFrame) => void;
-  orientationRef?: RefObject<Orientation>;
-  tiltEnabled?: boolean;
-  horizonOffsetDeg?: number;
 } & GroupProps;
 
 /**
@@ -200,45 +193,13 @@ function FloorFallback() {
  * It switches between the real model and the fallback floor based on the enableModel flag.
  */
 export function ModelScene({ modelPath, enableModel = false, ...props }: ModelSceneProps) {
-  const {
-    orientationRef,
-    tiltEnabled = false,
-    horizonOffsetDeg = 0,
-    ...groupProps
-  } = props;
-  const sceneGroupRef = useRef<THREE.Group>(null);
-
-  useFrame(() => {
-    if (!sceneGroupRef.current) return;
-
-    const rawRollDeg = orientationRef?.current?.gamma ?? 0;
-    const calibratedRollDeg = rawRollDeg - horizonOffsetDeg;
-    const targetRollDeg = tiltEnabled
-      ? THREE.MathUtils.clamp(calibratedRollDeg, -MAX_MODEL_TILT_DEG, MAX_MODEL_TILT_DEG)
-      : 0;
-    const targetRollRad = THREE.MathUtils.degToRad(targetRollDeg);
-
-    // Smooth roll transitions to avoid jitter from sensor micro-noise.
-    sceneGroupRef.current.rotation.z = THREE.MathUtils.lerp(
-      sceneGroupRef.current.rotation.z,
-      targetRollRad,
-      MODEL_TILT_SMOOTHING,
-    );
-  });
-
   if (!enableModel) {
-    return (
-      <group ref={sceneGroupRef}>
-        <FloorFallback />
-      </group>
-    );
+    return <FloorFallback />;
   }
 
   return (
-    <group ref={sceneGroupRef}>
-      <Suspense fallback={<FloorFallback />}>
-        <CorridorModel modelPath={modelPath} {...groupProps} />
-      </Suspense>
-    </group>
+    <Suspense fallback={<FloorFallback />}>
+      <CorridorModel modelPath={modelPath} {...props} />
+    </Suspense>
   );
 }

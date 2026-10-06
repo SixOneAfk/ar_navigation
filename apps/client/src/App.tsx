@@ -14,6 +14,12 @@ import { useAcceleration } from './hooks/useAcceleration';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from './navigation/useNavigation';
 import type { ModelSceneFrame } from './navigation/navigationData';
+import { calculateRollBiasDeg } from './utils/cvRoll';
+import {
+  parseWallReferenceCatalog,
+  type CameraPoseSnapshot,
+  type WallReference,
+} from './utils/wallReferences';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
@@ -23,10 +29,11 @@ const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
 const DEFAULT_STEP_STRIDE_METERS = 0.65;
 const DEFAULT_VERTICAL_DEBUG_ENABLED = false;
-const CV_HORIZON_MIN_CONFIDENCE = 0.6;
-const CV_HORIZON_COOLDOWN_MS = 1800;
-const CV_HORIZON_MAX_APPLY_STEP_DEG = 5;
-const CV_HORIZON_MIN_APPLY_MAGNITUDE_DEG = 0.8;
+const CV_ROLL_MIN_CONFIDENCE = 0.65;
+const CV_ROLL_COOLDOWN_MS = 400;
+const CV_ROLL_MAX_APPLY_STEP_DEG = 1.5;
+const CV_ROLL_MIN_RESIDUAL_DEG = 0.25;
+const CV_ROLL_MAX_BIAS_DEG = 12;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | 'compass' | 'navigation' | null;
 
@@ -64,9 +71,19 @@ export default function App() {
   const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
   const [headingDegrees, setHeadingDegrees] = useState(0);
   const [modelFrame, setModelFrame] = useState<ModelSceneFrame | null>(null);
+  const [modelVisible, setModelVisible] = useState(true);
   const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
   const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
   const lastCvHorizonAppliedAtRef = useRef(0);
+  const cameraPoseRef = useRef<CameraPoseSnapshot>({
+    position: { ...INITIAL_NAV_POSITION },
+    forward: { x: 0, y: 0, z: -1 },
+    right: { x: 1, y: 0, z: 0 },
+  });
+  const [wallReferences, setWallReferences] = useState<WallReference[]>([]);
+  const [wallReferenceError, setWallReferenceError] = useState<string | null>(
+    null,
+  );
 
   const accelConfig = useMemo(
     () => ({
@@ -103,6 +120,54 @@ export default function App() {
     setJoystick({ x: 0, y: 0 });
     setVerticalAxis(0);
   }, [moveMode]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWallReferences = async () => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}wall_references.json`,
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Wall catalog request failed with HTTP ${response.status}.`,
+          );
+        }
+        const catalog = parseWallReferenceCatalog(await response.json());
+        const expectedModel = MODEL_PATH.split('/').pop();
+        if (catalog.source_model !== expectedModel) {
+          throw new Error(
+            `Wall catalog belongs to ${catalog.source_model}, expected ${expectedModel}.`,
+          );
+        }
+        if (!cancelled) {
+          setWallReferences(catalog.walls);
+          setWallReferenceError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWallReferences([]);
+          setWallReferenceError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
+    };
+
+    void loadWallReferences();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!navigation.initialPosition) return;
+    cameraPoseRef.current.position = {
+      x: navigation.initialPosition.x,
+      y: navigation.initialPosition.y,
+      z: navigation.initialPosition.z,
+    };
+  }, [navigation.initialPosition]);
 
   const format = (value: number) => value.toFixed(3);
   const togglePanel = (panel: Exclude<PanelId, null>) => {
@@ -126,28 +191,41 @@ export default function App() {
   };
 
   const applyCvHorizonCorrection = ({
-    rollDeg,
+    cameraRollDeg,
     confidence,
   }: {
-    rollDeg: number;
+    cameraRollDeg: number;
     confidence: number;
   }) => {
     if (!gyroActive) return;
-    if (!Number.isFinite(rollDeg) || !Number.isFinite(confidence)) return;
-    if (confidence < CV_HORIZON_MIN_CONFIDENCE) return;
-    if (Math.abs(rollDeg) < CV_HORIZON_MIN_APPLY_MAGNITUDE_DEG) return;
+    if (!Number.isFinite(cameraRollDeg) || !Number.isFinite(confidence)) return;
+    if (confidence < CV_ROLL_MIN_CONFIDENCE) return;
+
+    const screenAngleDeg = window.screen.orientation?.angle ?? 0;
+    if (Math.abs(screenAngleDeg) % 180 === 90) return;
+
+    const rawRollDeg = orientationRef.current?.gamma;
+    if (typeof rawRollDeg !== 'number' || !Number.isFinite(rawRollDeg)) return;
+
+    const targetOffsetDeg = calculateRollBiasDeg(rawRollDeg, cameraRollDeg);
+    if (Math.abs(targetOffsetDeg) > CV_ROLL_MAX_BIAS_DEG) return;
+
+    const residualDeg = targetOffsetDeg - horizonOffsetDeg;
+    if (Math.abs(residualDeg) < CV_ROLL_MIN_RESIDUAL_DEG) return;
 
     const now = Date.now();
-    if (now - lastCvHorizonAppliedAtRef.current < CV_HORIZON_COOLDOWN_MS) {
+    if (now - lastCvHorizonAppliedAtRef.current < CV_ROLL_COOLDOWN_MS) {
       return;
     }
 
-    // Confidence-gated bounded step prevents sudden jumps from noisy frame estimates.
     const weightedStepDeg = Math.max(
-      -CV_HORIZON_MAX_APPLY_STEP_DEG,
-      Math.min(CV_HORIZON_MAX_APPLY_STEP_DEG, rollDeg * confidence),
+      -CV_ROLL_MAX_APPLY_STEP_DEG,
+      Math.min(CV_ROLL_MAX_APPLY_STEP_DEG, residualDeg * confidence),
     );
-    setHorizonOffsetDeg((prev) => prev + weightedStepDeg);
+    setHorizonOffsetDeg((previous) => Math.max(
+      -CV_ROLL_MAX_BIAS_DEG,
+      Math.min(CV_ROLL_MAX_BIAS_DEG, previous + weightedStepDeg),
+    ));
     lastCvHorizonAppliedAtRef.current = now;
   };
 
@@ -156,7 +234,15 @@ export default function App() {
       <CameraPermissionPanel
         isOpen={openPanel === 'camera'}
         onClose={() => setOpenPanel(null)}
+        orientationRef={orientationRef}
+        orientationActive={gyroActive}
         onHorizonCorrectionResolved={applyCvHorizonCorrection}
+        modelFrame={modelFrame}
+        cameraPoseRef={cameraPoseRef}
+        wallReferences={wallReferences}
+        wallReferenceError={wallReferenceError}
+        modelVisible={modelVisible}
+        onModelVisibilityChange={setModelVisible}
       />
 
 
@@ -508,15 +594,14 @@ export default function App() {
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[8, 12, 8]} intensity={1.2} />
 
-        <ModelScene
-          modelPath={MODEL_PATH}
-          enableModel
-          position={MODEL_SCENE_POSITION}
-          onModelFrame={setModelFrame}
-          orientationRef={orientationRef}
-          tiltEnabled={gyroActive}
-          horizonOffsetDeg={horizonOffsetDeg}
-        />
+        {modelVisible && (
+          <ModelScene
+            modelPath={MODEL_PATH}
+            enableModel
+            position={MODEL_SCENE_POSITION}
+            onModelFrame={setModelFrame}
+          />
+        )}
 
         <NavigationTracker
           initialPosition={navigation.initialPosition}
@@ -546,7 +631,9 @@ export default function App() {
           stepStrideMeters={stepStrideMeters}
           verticalAxis={verticalAxis}
           debugVerticalEnabled={debugVerticalEnabled}
+          horizonOffsetDeg={horizonOffsetDeg}
           sensitivity={1}
+          onPoseChange={(pose) => { cameraPoseRef.current = pose; }}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}

@@ -86,5 +86,119 @@ class RecalibrateTests(unittest.TestCase):
         self.assertEqual(response.cv_horizon_confidence, 0.81)
 
 
+
+class StructuralLinesEndpointTests(unittest.TestCase):
+    @patch.object(main, "estimate_camera_pose")
+    @patch.object(main, "detect_structural_lines")
+    def test_endpoint_returns_diagnostic_pose_without_applying_it(
+        self,
+        detect_mock: unittest.mock.Mock,
+        pose_mock: unittest.mock.Mock,
+    ) -> None:
+        wall_outline = {
+            "top_left": {"x": 0.2, "y": 0.2},
+            "top_right": {"x": 0.8, "y": 0.2},
+            "bottom_right": {"x": 0.9, "y": 0.7},
+            "bottom_left": {"x": 0.1, "y": 0.7},
+        }
+        detect_mock.return_value = {
+            "detected": True,
+            "floor_boundaries": [{
+                "line": {"x1": 0.1, "y1": 0.7, "x2": 0.9, "y2": 0.7},
+                "angle_deg": 0.0,
+                "confidence": 0.9,
+            }],
+            "floor_boundary": {"x1": 0.1, "y1": 0.7, "x2": 0.9, "y2": 0.7},
+            "boundary_angle_deg": 0.0,
+            "boundary_confidence": 0.9,
+            "camera_roll_deg": 0.0,
+            "roll_confidence": 0.9,
+            "wall_outline": wall_outline,
+            "wall_confidence": 0.84,
+            "wall_outlines": [{
+                "outline": wall_outline,
+                "confidence": 0.84,
+                "floor_boundary_index": 0,
+            }],
+            "wall_candidate_count": 2,
+            "wall_detection_skipped": False,
+            "wall_detection_reason": None,
+            "device_pitch_deg": 12.5,
+            "candidate_count": 8,
+            "vertical_candidate_count": 4,
+            "image_width": 640,
+            "image_height": 480,
+            "processing_time_ms": 3.2,
+        }
+        pose_mock.return_value = (
+            {
+                "position": {"x": 0.3, "y": 1.55, "z": -0.3},
+                "delta": {
+                    "x": 0.3,
+                    "y": -0.05,
+                    "z": -0.3,
+                    "horizontal_m": 0.424,
+                    "distance_m": 0.427,
+                },
+                "confidence": 0.79,
+                "reprojection_error_px": 1.2,
+                "distance_to_wall_m": 4.71,
+                "method": "solvepnp_ippe_planar",
+                "diagnostic_only": True,
+            },
+            None,
+        )
+        corners = [
+            {"x": -2.0, "y": 3.0, "z": -5.0},
+            {"x": 2.0, "y": 3.0, "z": -5.0},
+            {"x": 2.0, "y": 0.0, "z": -5.0},
+            {"x": -2.0, "y": 0.0, "z": -5.0},
+        ]
+        request = main.StructuralLinesRequest(
+            session_id="test-session",
+            timestamp=1,
+            image_payload=_jpeg_payload(),
+            device_pitch_deg=12.5,
+            estimated_position={"x": 0.0, "y": 1.6, "z": 0.0},
+            camera_intrinsics={
+                "fx": 554.256,
+                "fy": 554.256,
+                "cx": 320.0,
+                "cy": 240.0,
+            },
+            wall_reference={"id": "wall-front", "corners": corners},
+            reference_confidence=0.82,
+            intrinsics_confidence=0.35,
+        )
+
+        response = main.structural_lines(request)
+
+        self.assertEqual(response.selected_wall_id, "wall-front")
+        self.assertIsNone(response.pose_failure_reason)
+        self.assertIsNotNone(response.pose_estimate)
+        if response.pose_estimate is None:
+            self.fail("Expected a diagnostic pose estimate")
+        self.assertTrue(response.pose_estimate.diagnostic_only)
+        self.assertAlmostEqual(response.pose_estimate.delta.horizontal_m, 0.424)
+        self.assertEqual(detect_mock.call_args.args[1], 12.5)
+        pose_mock.assert_called_once_with(
+            wall_outline,
+            corners,
+            {
+                "fx": 554.256,
+                "fy": 554.256,
+                "cx": 320.0,
+                "cy": 240.0,
+                "distortion": [0.0, 0.0, 0.0, 0.0, 0.0],
+            },
+            {"x": 0.0, "y": 1.6, "z": 0.0},
+            640,
+            480,
+            0.84,
+            0.82,
+            0.35,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

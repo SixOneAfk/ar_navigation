@@ -6,6 +6,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { CvScanDto } from './dto/cv-scan.dto';
+import { CvStructuralLinesDto } from './dto/cv-structural-lines.dto';
 import { PositioningGrpcClient } from '../position/grpc/positioning-grpc.client';
 
 type MarkerPosition = {
@@ -28,6 +29,40 @@ type RecalibrationResult = {
   cv_horizon_confidence?: number;
 };
 
+type StructuralLinesResult = {
+  detected: boolean;
+  floor_boundaries?: Array<{
+    line: { x1: number; y1: number; x2: number; y2: number };
+    angle_deg: number;
+    confidence: number;
+  }>;
+  floor_boundary: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  } | null;
+  boundary_angle_deg: number | null;
+  boundary_confidence: number;
+  camera_roll_deg: number | null;
+  roll_confidence: number;
+  wall_outline?: Record<string, { x: number; y: number }> | null;
+  wall_confidence?: number;
+  wall_outlines?: Array<{
+    outline: Record<string, { x: number; y: number }>;
+    confidence: number;
+    floor_boundary_index: number;
+  }>;
+  wall_detection_skipped?: boolean;
+  wall_detection_reason?: string | null;
+  device_pitch_deg?: number | null;
+  candidate_count: number;
+  vertical_candidate_count: number;
+  image_width: number;
+  image_height: number;
+  processing_time_ms: number;
+};
+
 type CorrectionDecision = {
   mode: 'hard_snap' | 'soft_blend' | 'reject';
   applied: boolean;
@@ -43,6 +78,62 @@ export class CvController {
 
   constructor(private readonly positioningGrpcClient: PositioningGrpcClient) {
     console.log('[GATEWAY:CvController] Initialized');
+  }
+
+  @Post('structural-lines')
+  async structuralLines(@Body() dto: CvStructuralLinesDto) {
+    const imagePayload = dto.image_payload ?? dto.frameBase64;
+    if (!imagePayload) {
+      throw new BadRequestException('image_payload or frameBase64 is required');
+    }
+
+    const frameId = dto.frameId ?? dto.frame_id ?? `frame-${Date.now()}`;
+    const sequenceNumber = dto.sequence_number ?? 0;
+    const normalized = {
+      session_id: dto.session_id ?? dto.deviceId ?? 'unknown-session',
+      timestamp: dto.timestamp ?? Date.now(),
+      image_payload: imagePayload,
+      device_roll_deg: dto.device_roll_deg,
+      device_pitch_deg: dto.device_pitch_deg,
+      estimated_position: dto.estimated_position,
+      camera_intrinsics: dto.camera_intrinsics,
+      wall_reference: dto.wall_reference,
+      reference_confidence: dto.reference_confidence,
+      intrinsics_confidence: dto.intrinsics_confidence,
+    };
+
+    try {
+      const response = await fetch(
+        `${this.cvServiceBaseUrl}/api/v1/structural-lines`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(normalized),
+        },
+      );
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        throw new BadGatewayException(
+          `CV service returned HTTP ${response.status}: ${responseText.slice(0, 300)}`,
+        );
+      }
+
+      const structuralLines = (await response.json()) as StructuralLinesResult;
+      return {
+        status: 'accepted',
+        source: 'cv-structural-lines',
+        receivedAt: new Date().toISOString(),
+        frameId,
+        sequenceNumber,
+        structuralLines,
+      };
+    } catch (error) {
+      if (error instanceof BadGatewayException) {
+        throw error;
+      }
+      throw new BadGatewayException('CV service is unavailable');
+    }
   }
 
   @Post('scan')
