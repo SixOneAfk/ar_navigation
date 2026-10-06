@@ -37,6 +37,15 @@ export type HeadingData = {
   hasCompass: boolean;
   confidence: number;
   timestamp: number;
+  rawAlphaDeg: number | null;
+  rawBetaDeg: number | null;
+  rawGammaDeg: number | null;
+  webkitCompassHeadingDeg: number | null;
+  webkitCompassAccuracyDeg: number | null;
+  orientationAbsolute: boolean;
+  screenOrientationAngleDeg: number | null;
+  screenOrientationType: string | null;
+  deviceHeadingSource: 'webkitCompassHeading' | 'absolute-alpha' | null;
 };
 
 function normalizeHeadingDeg(value: number) {
@@ -60,6 +69,18 @@ function getCompassHeadingDeg(event: DeviceOrientationEvent): number | null {
   }
 
   return null;
+}
+
+function getScreenOrientation() {
+  const legacyAngle = (window as Window & { orientation?: number }).orientation;
+  return {
+    angle: typeof window.screen.orientation?.angle === 'number'
+      ? window.screen.orientation.angle
+      : typeof legacyAngle === 'number'
+        ? legacyAngle
+        : null,
+    type: window.screen.orientation?.type ?? null,
+  };
 }
 
 /**
@@ -107,6 +128,15 @@ export function useGyroscope() {
     hasCompass: false,
     confidence: 0,
     timestamp: 0,
+    rawAlphaDeg: null,
+    rawBetaDeg: null,
+    rawGammaDeg: null,
+    webkitCompassHeadingDeg: null,
+    webkitCompassAccuracyDeg: null,
+    orientationAbsolute: false,
+    screenOrientationAngleDeg: null,
+    screenOrientationType: null,
+    deviceHeadingSource: null,
   });
   const motionRef = useRef<MotionData>({ x: 0, y: 0, z: 0, timestamp: 0 });
 
@@ -169,7 +199,20 @@ export function useGyroscope() {
 
       const rawGyroHeadingDeg = normalizeHeadingDeg(nextOrientation.alpha);
       const rawCompassHeadingDeg = getCompassHeadingDeg(e);
+      const webkitCompassHeadingDeg = (
+        e as DeviceOrientationEvent & { webkitCompassHeading?: number }
+      ).webkitCompassHeading;
+      const webkitCompassAccuracyDeg = (
+        e as DeviceOrientationEvent & { webkitCompassAccuracy?: number }
+      ).webkitCompassAccuracy;
+      const screenOrientation = getScreenOrientation();
       const hasCompass = rawCompassHeadingDeg !== null;
+      const deviceHeadingSource = typeof webkitCompassHeadingDeg === 'number'
+        && Number.isFinite(webkitCompassHeadingDeg)
+        ? 'webkitCompassHeading'
+        : e.absolute && typeof e.alpha === 'number' && Number.isFinite(e.alpha)
+          ? 'absolute-alpha'
+          : null;
 
       // Keep gyro and compass independent: gyro drives motion heading, compass is diagnostic/anchor only.
       const fusedHeadingDeg = rawGyroHeadingDeg;
@@ -197,6 +240,21 @@ export function useGyroscope() {
         hasCompass,
         confidence,
         timestamp: e.timeStamp ?? Date.now(),
+        rawAlphaDeg: typeof e.alpha === 'number' && Number.isFinite(e.alpha) ? e.alpha : null,
+        rawBetaDeg: typeof e.beta === 'number' && Number.isFinite(e.beta) ? e.beta : null,
+        rawGammaDeg: typeof e.gamma === 'number' && Number.isFinite(e.gamma) ? e.gamma : null,
+        webkitCompassHeadingDeg: typeof webkitCompassHeadingDeg === 'number'
+          && Number.isFinite(webkitCompassHeadingDeg)
+          ? webkitCompassHeadingDeg
+          : null,
+        webkitCompassAccuracyDeg: typeof webkitCompassAccuracyDeg === 'number'
+          && Number.isFinite(webkitCompassAccuracyDeg)
+          ? webkitCompassAccuracyDeg
+          : null,
+        orientationAbsolute: e.absolute,
+        screenOrientationAngleDeg: screenOrientation.angle,
+        screenOrientationType: screenOrientation.type,
+        deviceHeadingSource,
       };
 
       if (orientationEventCountRef.current === 1) {

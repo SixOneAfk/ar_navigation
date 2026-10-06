@@ -6,6 +6,8 @@ import { CompassWidget } from './components/CompassWidget';
 import { GyroCamera } from './components/GyroCamera';
 import { NavigationStatus } from './components/NavigationStatus';
 import { NavigationTracker } from './components/NavigationTracker';
+import { NavigationRouteLine } from './components/NavigationRouteLine';
+import { NavigationArrow } from './components/NavigationArrow';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
 import { useAcceleration } from './hooks/useAcceleration';
@@ -15,7 +17,7 @@ import type { ModelSceneFrame } from './navigation/navigationData';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
-const MODEL_PATH = '/model.floor1-graph-test1.glb';
+const MODEL_PATH = '/Floor%201_Rotated_Points.glb';
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
@@ -26,7 +28,7 @@ const CV_HORIZON_COOLDOWN_MS = 1800;
 const CV_HORIZON_MAX_APPLY_STEP_DEG = 5;
 const CV_HORIZON_MIN_APPLY_MAGNITUDE_DEG = 0.8;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
-type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
+type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | 'compass' | 'navigation' | null;
 
 /**
  * CHANGE FROM INITIAL MAIN CLONE
@@ -51,7 +53,7 @@ type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | null;
  */
 
 export default function App() {
-  const [openPanel, setOpenPanel] = useState<PanelId>(null);
+  const [openPanel, setOpenPanel] = useState<PanelId>('navigation');
   const [stepThreshold, setStepThreshold] = useState(DEFAULT_STEP_THRESHOLD);
   const [stepDebounceMs, setStepDebounceMs] = useState(DEFAULT_STEP_DEBOUNCE_MS);
   const [rawDeadband, setRawDeadband] = useState(DEFAULT_RAW_DEADBAND);
@@ -60,6 +62,7 @@ export default function App() {
   const [joystick, setJoystick] = useState<JoystickValue>({ x: 0, y: 0 });
   const [verticalAxis, setVerticalAxis] = useState(0);
   const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
+  const [headingDegrees, setHeadingDegrees] = useState(0);
   const [modelFrame, setModelFrame] = useState<ModelSceneFrame | null>(null);
   const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
   const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
@@ -92,6 +95,11 @@ export default function App() {
   };
 
   useEffect(() => {
+    const timer = window.setInterval(() => setHeadingDegrees(headingRef.current.fusedHeadingDeg), 250);
+    return () => window.clearInterval(timer);
+  }, [headingRef]);
+
+  useEffect(() => {
     setJoystick({ x: 0, y: 0 });
     setVerticalAxis(0);
   }, [moveMode]);
@@ -107,6 +115,14 @@ export default function App() {
     debugEnabled: navigation.debugEnabled,
     loadError: navigation.loadError,
     alignmentWarning: navigation.alignmentWarning,
+    navigationPoints: navigation.navigationPoints,
+    availableDestinations: navigation.availableDestinations,
+    destinationId: navigation.destinationId,
+    activeRoute: navigation.activeRoute,
+    routeMessage: navigation.routeMessage,
+    onNavigate: navigation.navigateTo,
+    onCancelNavigation: navigation.cancelNavigation,
+    headingDegrees,
   };
 
   const applyCvHorizonCorrection = ({
@@ -177,6 +193,22 @@ export default function App() {
         >
           Tune
         </button>
+        <button
+          type="button"
+          className="control-dock__btn"
+          data-active={openPanel === 'compass'}
+          onClick={() => togglePanel('compass')}
+        >
+          Compass
+        </button>
+        <button
+          type="button"
+          className="control-dock__btn"
+          data-active={openPanel === 'navigation'}
+          onClick={() => togglePanel('navigation')}
+        >
+          Navigation
+        </button>
       </div>
 
       <CompassWidget
@@ -186,9 +218,19 @@ export default function App() {
         horizonOffsetDeg={horizonOffsetDeg}
         onCalibrateHorizon={(currentRollDeg) => setHorizonOffsetDeg(currentRollDeg)}
         onResetHorizon={() => setHorizonOffsetDeg(0)}
+        activeRoute={navigation.activeRoute}
+        currentPointId={navigation.currentPointId}
+        isOpen={openPanel === 'compass'}
+        onToggle={() => togglePanel('compass')}
       />
 
-      {openPanel !== 'gyro' && <NavigationStatus {...navigationStatusProps} />}
+      {openPanel !== 'gyro' && (
+        <NavigationStatus
+          {...navigationStatusProps}
+          isOpen={openPanel === 'navigation'}
+          onToggle={() => togglePanel('navigation')}
+        />
+      )}
 
       {openPanel === 'gyro' && (
         <div className="gyro-panel">
@@ -196,6 +238,8 @@ export default function App() {
           <NavigationStatus
             {...navigationStatusProps}
             className="navigation-status navigation-status--inline"
+            isOpen
+            collapsible={false}
           />
           <button
             type="button"
@@ -478,6 +522,16 @@ export default function App() {
           initialPosition={navigation.initialPosition}
           points={navigation.worldPoints}
           onPlayerPosition={navigation.observePlayerPosition}
+        />
+
+        <NavigationRouteLine route={navigation.activeRoute} points={navigation.worldPoints} />
+
+        <NavigationArrow
+          route={navigation.activeRoute}
+          currentPointId={navigation.currentPointId}
+          points={navigation.worldPoints}
+          headingDegrees={headingDegrees}
+          debugEnabled={navigation.debugEnabled}
         />
 
         {/* Gyro rotation applied inside the Canvas each frame */}

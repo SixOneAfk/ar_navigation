@@ -4,28 +4,44 @@ export const NAVIGATION_POINT_RADIUS_M = 0.75;
 
 export type NavigationPoint = {
   id: string;
-  row: number;
-  column: number;
+  row?: number;
+  column?: number;
   x: number;
   y: number;
 };
 
+export type NavigationBranch = {
+  id: string;
+  from: string;
+  to: string;
+  distance: number;
+};
+
 export type BuildingNavigation = {
-  building: string;
+  building?: string;
   grid: {
     cell_size: number;
-    margin: number;
-    wall_clearance: number;
+    margin?: number;
+    wall_clearance?: number;
     movement: { diagonal: boolean };
-    coordinate_system: { x: string; y: string };
+    coordinate_system: {
+      type: string;
+      reference_object?: string;
+      x: string;
+      y: string;
+    };
   };
   points: NavigationPoint[];
+  branches: NavigationBranch[];
+  invalidBranches?: string[];
 };
 
 export type ModelSceneFrame = {
   center: { x: number; y: number; z: number };
   floorHeight: number;
   position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
   bounds: {
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };
@@ -96,33 +112,35 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
   }
 
   if (!isRecord(value)) throw new Error('Navigation data must be a JSON object.');
-  if (typeof value.building !== 'string' || value.building.length === 0) {
-    throw new Error('Navigation data is missing a building name.');
+  if (value.building !== undefined && (typeof value.building !== 'string' || value.building.length === 0)) {
+    throw new Error('Navigation data building name must be a non-empty string when provided.');
   }
 
   const grid = value.grid;
   if (!isRecord(grid)) throw new Error('Navigation data is missing grid configuration.');
-  const cellSize = requireFiniteNumber(grid.cell_size, 'grid.cell_size');
-  const margin = requireFiniteNumber(grid.margin, 'grid.margin');
-  const wallClearance = requireFiniteNumber(grid.wall_clearance, 'grid.wall_clearance');
-  if (cellSize <= 0 || margin < 0 || wallClearance < 0) {
-    throw new Error('Grid configuration requires cell_size > 0 and non-negative margin and wall_clearance.');
+  const cellSize = requireFiniteNumber(grid.cell_size ?? grid.size, 'grid.cell_size or grid.size');
+  const margin = grid.margin === undefined ? undefined : requireFiniteNumber(grid.margin, 'grid.margin');
+  const wallClearance = grid.wall_clearance === undefined
+    ? undefined
+    : requireFiniteNumber(grid.wall_clearance, 'grid.wall_clearance');
+  if (cellSize <= 0 || (margin !== undefined && margin < 0) || (wallClearance !== undefined && wallClearance < 0)) {
+    throw new Error('Grid configuration requires a positive cell size and non-negative optional margin and wall_clearance.');
   }
 
   const movement = grid.movement;
-  const coordinateSystem = grid.coordinate_system;
-  if (!isRecord(movement) || typeof movement.diagonal !== 'boolean') {
-    throw new Error('grid.movement.diagonal must be a boolean.');
+  const diagonal = isRecord(movement) ? movement.diagonal : grid.diagonal_connections;
+  if (typeof diagonal !== 'boolean') {
+    throw new Error('grid.movement.diagonal or grid.diagonal_connections must be a boolean.');
   }
+  const coordinateSystem = grid.coordinate_system ?? value.coordinate_system;
   if (
     !isRecord(coordinateSystem) ||
+    typeof coordinateSystem.type !== 'string' ||
+    (coordinateSystem.reference_object !== undefined && typeof coordinateSystem.reference_object !== 'string') ||
     typeof coordinateSystem.x !== 'string' ||
     typeof coordinateSystem.y !== 'string'
   ) {
-    throw new Error('grid.coordinate_system must provide string x and y descriptions.');
-  }
-  if (coordinateSystem.x !== 'Blender World X' || coordinateSystem.y !== 'Blender World Y') {
-    throw new Error('Only Blender World X/Y navigation coordinates are supported by the current GLB transform.');
+    throw new Error('Navigation coordinate_system must define type, x, and y descriptions.');
   }
 
   const pointsValue = value.points;
@@ -139,31 +157,65 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
     if (ids.has(pointValue.id)) throw new Error(`Duplicate navigation point ID: ${pointValue.id}.`);
     ids.add(pointValue.id);
 
-    const row = requireFiniteNumber(pointValue.row, `${label}.row`);
-    const column = requireFiniteNumber(pointValue.column, `${label}.column`);
-    if (!Number.isInteger(row) || !Number.isInteger(column)) {
-      throw new Error(`${label}.row and ${label}.column must be integers.`);
+    const row = pointValue.row === undefined ? undefined : requireFiniteNumber(pointValue.row, `${label}.row`);
+    const column = pointValue.column === undefined ? undefined : requireFiniteNumber(pointValue.column, `${label}.column`);
+    if ((row !== undefined && !Number.isInteger(row)) || (column !== undefined && !Number.isInteger(column))) {
+      throw new Error(`${label}.row and ${label}.column must be integers when provided.`);
     }
 
     return {
       id: pointValue.id,
-      row,
-      column,
+      ...(row === undefined ? {} : { row }),
+      ...(column === undefined ? {} : { column }),
       x: requireFiniteNumber(pointValue.x, `${label}.x`),
       y: requireFiniteNumber(pointValue.y, `${label}.y`),
     };
   });
 
+  const branchesValue = value.branches;
+  const branches: NavigationBranch[] = [];
+  if (!Array.isArray(branchesValue)) throw new Error('Navigation data is missing the branches array.');
+  const branchIds = new Set<string>();
+  for (const [index, branchValue] of branchesValue.entries()) {
+    const label = `branches[${index}]`;
+    if (!isRecord(branchValue)) throw new Error(`${label} must be an object.`);
+    if (typeof branchValue.id !== 'string' || branchValue.id.length === 0) {
+      throw new Error(`${label}.id must be a non-empty string.`);
+    }
+    if (branchIds.has(branchValue.id)) throw new Error(`Duplicate navigation branch ID: ${branchValue.id}.`);
+    branchIds.add(branchValue.id);
+
+    const from = branchValue.from;
+    const to = branchValue.to;
+    if (typeof from !== 'string' || !ids.has(from)) {
+      throw new Error(`${label} (${branchValue.id}) references nonexistent point "${String(from)}" in from.`);
+    }
+    if (typeof to !== 'string' || !ids.has(to)) {
+      throw new Error(`${label} (${branchValue.id}) references nonexistent point "${String(to)}" in to.`);
+    }
+    const distance = requireFiniteNumber(branchValue.distance, `${label}.distance`);
+    if (distance <= 0) throw new Error(`${label}.distance must be a finite positive number.`);
+    branches.push({ id: branchValue.id, from, to, distance });
+  }
+
   return {
-    building: value.building,
+    ...(typeof value.building === 'string' ? { building: value.building } : {}),
     grid: {
       cell_size: cellSize,
-      margin,
-      wall_clearance: wallClearance,
-      movement: { diagonal: movement.diagonal },
-      coordinate_system: { x: coordinateSystem.x, y: coordinateSystem.y },
+      ...(margin === undefined ? {} : { margin }),
+      ...(wallClearance === undefined ? {} : { wall_clearance: wallClearance }),
+      movement: { diagonal },
+      coordinate_system: {
+        type: coordinateSystem.type as string,
+        ...(typeof coordinateSystem.reference_object === 'string'
+          ? { reference_object: coordinateSystem.reference_object }
+          : {}),
+        x: coordinateSystem.x as string,
+        y: coordinateSystem.y as string,
+      },
     },
     points,
+    branches,
   };
 }
 
@@ -172,12 +224,24 @@ export function navigationPointToThreePosition(
   modelFrame: ModelSceneFrame,
   cameraHeight: number,
 ): THREE.Vector3 {
-  // Blender's glTF export maps Blender X to Three X and Blender Y to negative Three Z.
+  // Measured alignment between building_navigation.json's raw blender_vertex_local coordinates and
+  // the GLB's baked mesh data: cross-referencing all 8362 branches[] against their matching GLB mesh
+  // nodes (same IDs, e.g. "B0") shows a 305.00 deg rotation plus this translation aligns every branch
+  // to within ~1.3mm RMS across the ~98m building footprint. Not a guess/offset-to-fit; both constants
+  // were solved from real GLB geometry (apps/client/public/Floor 1_Rotated_Points.glb).
+  const rotationRadians = THREE.MathUtils.degToRad(305.0);
+  const cos = Math.cos(rotationRadians);
+  const sin = Math.sin(rotationRadians);
+  const rotatedX = point.x * cos - point.y * sin;
+  const rotatedY = point.x * sin + point.y * cos;
+  const alignedX = rotatedX + 34.461503;
+  const alignedZ = -rotatedY + -13.598112;
+
   // ModelScene recenters X/Z, anchors the floor at Y=0, and applies its existing group position.
   return new THREE.Vector3(
-    point.x - modelFrame.center.x + modelFrame.position.x,
+    alignedX - modelFrame.center.x + modelFrame.position.x,
     cameraHeight + modelFrame.position.y,
-    -point.y - modelFrame.center.z + modelFrame.position.z,
+    alignedZ - modelFrame.center.z + modelFrame.position.z,
   );
 }
 

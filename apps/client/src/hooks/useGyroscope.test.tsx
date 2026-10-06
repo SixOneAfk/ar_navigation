@@ -92,15 +92,33 @@ describe('useGyroscope', () => {
       result.current.requestPermission();
     });
 
-    const event = new Event('deviceorientation') as Event & { alpha?: number; beta?: number; gamma?: number };
+    const event = new Event('deviceorientation') as Event & {
+      alpha?: number;
+      beta?: number;
+      gamma?: number;
+      absolute?: boolean;
+      webkitCompassHeading?: number;
+      webkitCompassAccuracy?: number;
+    };
     event.alpha = 12;
     event.beta = -6;
     event.gamma = 4;
+    event.absolute = true;
+    event.webkitCompassHeading = 278;
+    event.webkitCompassAccuracy = 7;
     window.dispatchEvent(event);
 
     expect(result.current.orientationRef.current.alpha).toBe(12);
     expect(result.current.orientationRef.current.beta).toBe(-6);
     expect(result.current.orientationRef.current.gamma).toBe(4);
+    expect(result.current.headingRef.current.rawAlphaDeg).toBe(12);
+    expect(result.current.headingRef.current.rawBetaDeg).toBe(-6);
+    expect(result.current.headingRef.current.rawGammaDeg).toBe(4);
+    expect(result.current.headingRef.current.webkitCompassHeadingDeg).toBe(278);
+    expect(result.current.headingRef.current.webkitCompassAccuracyDeg).toBe(7);
+    expect(result.current.headingRef.current.orientationAbsolute).toBe(true);
+    expect(result.current.headingRef.current.deviceHeadingSource).toBe('webkitCompassHeading');
+    expect(result.current.headingRef.current.fusedHeadingDeg).toBe(12);
   });
 
   it('tracks valid motion values and calibration offsets', () => {

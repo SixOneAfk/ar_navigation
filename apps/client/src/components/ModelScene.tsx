@@ -68,11 +68,37 @@ function CorridorModel({
     groupPosition.copy(props.position);
   }
 
+  // Diagnostic only: reports whatever rotation/scale the scene graph actually applies (currently none).
+  const groupRotation = new THREE.Euler();
+  if (Array.isArray(props.rotation)) {
+    groupRotation.set(props.rotation[0] ?? 0, props.rotation[1] ?? 0, props.rotation[2] ?? 0);
+  } else if (props.rotation instanceof THREE.Euler) {
+    groupRotation.copy(props.rotation);
+  }
+  const groupScale = new THREE.Vector3(1, 1, 1);
+  if (Array.isArray(props.scale)) {
+    groupScale.fromArray(props.scale as [number, number, number]);
+  } else if (typeof props.scale === 'number') {
+    groupScale.setScalar(props.scale);
+  } else if (props.scale instanceof THREE.Vector3) {
+    groupScale.copy(props.scale);
+  }
+
   useEffect(() => {
     onModelFrame?.({
       center: { x: center.x, y: center.y, z: center.z },
       floorHeight,
       position: { x: groupPosition.x, y: groupPosition.y, z: groupPosition.z },
+      rotation: {
+        x: THREE.MathUtils.radToDeg(scene.rotation.x + groupRotation.x),
+        y: THREE.MathUtils.radToDeg(scene.rotation.y + groupRotation.y),
+        z: THREE.MathUtils.radToDeg(scene.rotation.z + groupRotation.z),
+      },
+      scale: {
+        x: scene.scale.x * groupScale.x,
+        y: scene.scale.y * groupScale.y,
+        z: scene.scale.z * groupScale.z,
+      },
       bounds: {
         min: {
           x: box.min.x - center.x + groupPosition.x,
@@ -100,6 +126,18 @@ function CorridorModel({
     groupPosition.x,
     groupPosition.y,
     groupPosition.z,
+    groupRotation.x,
+    groupRotation.y,
+    groupRotation.z,
+    groupScale.x,
+    groupScale.y,
+    groupScale.z,
+    scene.rotation.x,
+    scene.rotation.y,
+    scene.rotation.z,
+    scene.scale.x,
+    scene.scale.y,
+    scene.scale.z,
     onModelFrame,
   ]);
 
@@ -150,7 +188,7 @@ function FloorFallback() {
             color: '#1f2a3d',
           }}
         >
-          Add public/model.glb to see your corridor model.
+          Add public/Floor 1_Rotated_Points.glb to load the building model.
         </div>
       </Html>
     </group>

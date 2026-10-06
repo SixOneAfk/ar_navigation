@@ -1,5 +1,5 @@
-Place your corridor model file here as:
+The building model is loaded from:
 
-public/prototype.glb
+public/Floor 1_Rotated_Points.glb
 
-Then set enableModel to true in src/App.tsx.
+The navigation arrow model remains at public/assets/Arrow1.glb.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { HeadingData, Orientation } from '../hooks/useGyroscope';
+import type { NavigationPath } from '../navigation/graph';
 
 type CompassWidgetProps = {
   headingRef: React.RefObject<HeadingData>;
@@ -8,6 +9,10 @@ type CompassWidgetProps = {
   horizonOffsetDeg: number;
   onCalibrateHorizon: (currentRollDeg: number) => void;
   onResetHorizon: () => void;
+  activeRoute?: NavigationPath | null;
+  currentPointId?: string | null;
+  isOpen?: boolean;
+  onToggle?: () => void;
 };
 
 const EMPTY_HEADING: HeadingData = {
@@ -17,6 +22,15 @@ const EMPTY_HEADING: HeadingData = {
   hasCompass: false,
   confidence: 0,
   timestamp: 0,
+  rawAlphaDeg: null,
+  rawBetaDeg: null,
+  rawGammaDeg: null,
+  webkitCompassHeadingDeg: null,
+  webkitCompassAccuracyDeg: null,
+  orientationAbsolute: false,
+  screenOrientationAngleDeg: null,
+  screenOrientationType: null,
+  deviceHeadingSource: null,
 };
 
 /**
@@ -30,9 +44,17 @@ export function CompassWidget({
   horizonOffsetDeg,
   onCalibrateHorizon,
   onResetHorizon,
+  horizonOffsetDeg,
+  onCalibrateHorizon,
+  onResetHorizon,
+  activeRoute = null,
+  currentPointId = null,
+  isOpen = true,
+  onToggle,
 }: CompassWidgetProps) {
   const [heading, setHeading] = useState<HeadingData>(EMPTY_HEADING);
   const [rollDeg, setRollDeg] = useState(0);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -59,6 +81,20 @@ export function CompassWidget({
       ? null
       : ((heading.rawCompassHeadingDeg % 360) + 360) % 360;
   const needleRotation = -normalizedGyroControlHeading;
+  const routeIndex = currentPointId && activeRoute
+    ? Math.max(0, activeRoute.points.indexOf(currentPointId))
+    : 0;
+  const nextMapDirection = activeRoute?.directions[routeIndex]?.direction;
+  const mapBearingDeg = nextMapDirection === 'FORWARD'
+    ? 0
+    : nextMapDirection === 'RIGHT'
+      ? 90
+      : nextMapDirection === 'BACKWARD'
+        ? 180
+        : nextMapDirection === 'LEFT'
+          ? 270
+          : null;
+  const diagnosticNumber = (value: number | null) => value === null ? 'unavailable' : `${value.toFixed(1)} deg`;
   const confidencePct = Math.round(Math.max(0, Math.min(1, heading.confidence)) * 100);
   const confidenceTone =
     confidencePct >= 70
@@ -70,9 +106,21 @@ export function CompassWidget({
   const clampedRoll = Math.max(-45, Math.min(45, calibratedRollDeg));
   const signedRollText = `${calibratedRollDeg >= 0 ? '+' : ''}${calibratedRollDeg.toFixed(1)} deg`;
 
+  if (!isOpen) {
+    return (
+      <section className="compass-widget compass-widget--collapsed" aria-label="Compass">
+        <button type="button" className="compass-widget__collapse-toggle" onClick={onToggle} aria-expanded={false}>
+          <span aria-hidden="true">▸</span> Compass
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="compass-widget" aria-live="polite" data-confidence={confidenceTone}>
-      <h3 className="compass-widget__title">Heading</h3>
+      <button type="button" className="compass-widget__collapse-toggle compass-widget__title" onClick={onToggle} aria-expanded={true}>
+        <span aria-hidden="true">▾</span> Compass
+      </button>
       <div className="compass-widget__dial" aria-label="Compass dial">
         <span className="compass-widget__north">N</span>
         <span className="compass-widget__east">E</span>
@@ -99,6 +147,38 @@ export function CompassWidget({
         <span>Compass</span>
         <strong>{normalizedCompass === null ? 'N/A' : `${normalizedCompass.toFixed(1)} deg`}</strong>
       </div>
+
+      <button
+        type="button"
+        className="horizon-widget__btn horizon-widget__btn--secondary"
+        onClick={() => setDiagnosticsOpen((open) => !open)}
+        aria-expanded={diagnosticsOpen}
+      >
+        {diagnosticsOpen ? 'Hide sensor diagnostics' : 'Show sensor diagnostics'}
+      </button>
+      {diagnosticsOpen && (
+        <div className="compass-widget__diagnostics" aria-label="Device and map heading diagnostics">
+          <strong>DEVICE SENSOR DATA</strong>
+          <div>Sensor event: deviceorientation</div>
+          <div>Event absolute: {heading.orientationAbsolute ? 'true' : 'false'}</div>
+          <div>Raw alpha: {diagnosticNumber(heading.rawAlphaDeg)}</div>
+          <div>Raw beta: {diagnosticNumber(heading.rawBetaDeg)}</div>
+          <div>Raw gamma: {diagnosticNumber(heading.rawGammaDeg)}</div>
+          <div>webkitCompassHeading: {diagnosticNumber(heading.webkitCompassHeadingDeg)}</div>
+          <div>webkitCompassAccuracy: {diagnosticNumber(heading.webkitCompassAccuracyDeg)}</div>
+          <div>
+            Screen orientation: {heading.screenOrientationType ?? 'unknown'} ({heading.screenOrientationAngleDeg === null ? 'angle unavailable' : `${heading.screenOrientationAngleDeg} deg`})
+          </div>
+          <div>
+            Calculated device heading: {diagnosticNumber(heading.rawCompassHeadingDeg)} ({heading.deviceHeadingSource ?? 'no absolute compass source'})
+          </div>
+          <div>Calculated map bearing: {mapBearingDeg === null ? 'unavailable (no active route segment)' : `${mapBearingDeg} deg`}</div>
+          <div>Compass correction/offset: none applied</div>
+          <div>Reference: WebKit compass is magnetic; absolute alpha is browser/OS reference. No true-north declination is applied.</div>
+          <div>Compass needle source: gyro alpha / fusedHeadingDeg ({normalizedGyroControlHeading.toFixed(1)} deg)</div>
+          <div>North = 0 deg; East = 90 deg; South = 180 deg; West = 270 deg</div>
+        </div>
+      )}
 
       <div className="horizon-widget" aria-label="Gyroscope horizon">
         <div className="horizon-widget__window">
