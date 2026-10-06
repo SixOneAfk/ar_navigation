@@ -10,6 +10,7 @@ import { NavigationRouteLine } from './components/NavigationRouteLine';
 import { NavigationArrow } from './components/NavigationArrow';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
+import { useCompass } from './hooks/useCompass';
 import { useAcceleration } from './hooks/useAcceleration';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from './navigation/useNavigation';
@@ -94,7 +95,18 @@ export default function App() {
     [rawDeadband, stepDebounceMs, stepThreshold],
   );
 
-  const { state: gyroState, orientationRef, headingRef, motionRef, requestPermission } = useGyroscope();
+  const {
+    state: gyroState,
+    orientationRef,
+    headingRef,
+    motionRef,
+    requestPermission: requestGyroPermission,
+  } = useGyroscope();
+  const {
+    state: compassState,
+    headingRef: compassHeadingRef,
+    requestPermission: requestCompassPermission,
+  } = useCompass();
   const {
     state: accelState,
     sample: accelSample,
@@ -104,11 +116,16 @@ export default function App() {
     reset: resetAcceleration,
   } = useAcceleration(accelConfig);
   const gyroActive = gyroState === 'granted';
+  const compassActive = compassState === 'granted';
   const cameraActive = moveMode === 'buttons' || (gyroActive && moveMode !== 'off');
 
   const requestSensorPermission = async () => {
-    // Both listeners are requested from the same user gesture for mobile browsers.
-    await Promise.all([requestPermission(), requestAccelPermission()]);
+    // Request all sensor services from the same user gesture for mobile browsers.
+    await Promise.all([
+      requestGyroPermission(),
+      requestCompassPermission(),
+      requestAccelPermission(),
+    ]);
   };
 
   useEffect(() => {
@@ -299,8 +316,9 @@ export default function App() {
 
       <CompassWidget
         headingRef={headingRef}
+        compassHeadingRef={compassHeadingRef}
         orientationRef={orientationRef}
-        enabled={gyroActive}
+        enabled={compassActive}
         horizonOffsetDeg={horizonOffsetDeg}
         onCalibrateHorizon={(currentRollDeg) => setHorizonOffsetDeg(currentRollDeg)}
         onResetHorizon={() => setHorizonOffsetDeg(0)}
@@ -341,9 +359,9 @@ export default function App() {
               type="button"
               className="gyro-panel__btn"
               onClick={requestSensorPermission}
-              disabled={gyroState === 'requesting'}
+                disabled={gyroState === 'requesting' || compassState === 'requesting'}
             >
-              {gyroState === 'requesting' ? 'Requesting…' : 'Enable Gyro'}
+                {(gyroState === 'requesting' || compassState === 'requesting') ? 'Requesting…' : 'Enable Sensors (Gyro + Compass + Motion)'}
             </button>
           </div>
 
@@ -417,9 +435,17 @@ export default function App() {
             {gyroState === 'idle' && 'Gyroscope not active.'}
             {gyroState === 'requesting' && 'Waiting for permission…'}
             {gyroState === 'granted' && 'Gyroscope active.'}
-            {gyroState === 'denied' && 'Permission denied. Allow motion sensors in browser settings.'}
+            {gyroState === 'denied' && 'Permission denied. Allow motion/orientation sensors in browser settings.'}
             {gyroState === 'insecure' && 'Gyroscope requires HTTPS or localhost. Open the app from a secure origin.'}
             {gyroState === 'unsupported' && 'DeviceOrientationEvent not supported on this device.'}
+          </p>
+          <p className="gyro-panel__status" data-state={compassState}>
+            {compassState === 'idle' && 'Compass not active.'}
+            {compassState === 'requesting' && 'Compass permission pending…'}
+            {compassState === 'granted' && 'Compass active (north from real compass data when available).'}
+            {compassState === 'denied' && 'Compass denied. Browser may allow only relative gyro data.'}
+            {compassState === 'insecure' && 'Compass requires HTTPS or localhost.'}
+            {compassState === 'unsupported' && 'Compass data unavailable in this browser/device.'}
           </p>
         </div>
       )}

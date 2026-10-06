@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { HeadingData, Orientation } from '../hooks/useGyroscope';
+import type { CompassHeadingData } from '../hooks/useCompass';
 import type { NavigationPath } from '../navigation/graph';
 
 type CompassWidgetProps = {
   headingRef: React.RefObject<HeadingData>;
+  compassHeadingRef?: React.RefObject<CompassHeadingData>;
   orientationRef: React.RefObject<Orientation>;
   enabled: boolean;
   horizonOffsetDeg: number;
@@ -39,6 +41,7 @@ const EMPTY_HEADING: HeadingData = {
  */
 export function CompassWidget({
   headingRef,
+  compassHeadingRef,
   orientationRef,
   enabled,
   horizonOffsetDeg,
@@ -73,11 +76,26 @@ export function CompassWidget({
 
   const normalizedGyroControlHeading = ((heading.fusedHeadingDeg % 360) + 360) % 360;
   const normalizedGyro = ((heading.rawGyroHeadingDeg % 360) + 360) % 360;
+  const compassHeadingData = compassHeadingRef?.current;
   const normalizedCompass =
-    heading.rawCompassHeadingDeg === null
+    (compassHeadingData?.headingDeg ?? heading.rawCompassHeadingDeg) === null
       ? null
-      : ((heading.rawCompassHeadingDeg % 360) + 360) % 360;
-  const needleRotation = -normalizedGyroControlHeading;
+      : (((compassHeadingData?.headingDeg ?? heading.rawCompassHeadingDeg ?? 0) % 360) + 360) % 360;
+  const needleHeadingDeg = normalizedCompass ?? normalizedGyroControlHeading;
+  const needleRotation = -needleHeadingDeg;
+  const compassSource = compassHeadingData?.source ?? heading.deviceHeadingSource;
+  const needleSourceLabel = normalizedCompass === null
+    ? 'gyro alpha / fusedHeadingDeg fallback'
+    : `real compass (${compassSource ?? 'unknown source'})`;
+  const northRelativeDeg = ((-needleHeadingDeg % 360) + 360) % 360;
+  const northRelativeText =
+    northRelativeDeg < 45 || northRelativeDeg >= 315
+      ? 'ahead'
+      : northRelativeDeg < 135
+        ? 'to your right'
+        : northRelativeDeg < 225
+          ? 'behind you'
+          : 'to your left';
   const routeIndex = currentPointId && activeRoute
     ? Math.max(0, activeRoute.points.indexOf(currentPointId))
     : 0;
@@ -102,6 +120,39 @@ export function CompassWidget({
   const calibratedRollDeg = rollDeg - horizonOffsetDeg;
   const clampedRoll = Math.max(-45, Math.min(45, calibratedRollDeg));
   const signedRollText = `${calibratedRollDeg >= 0 ? '+' : ''}${calibratedRollDeg.toFixed(1)} deg`;
+
+  useEffect(() => {
+    if (import.meta.env?.DEV !== true && import.meta.env?.VITE_DEBUG_SENSORS !== 'true') {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const current = headingRef.current ?? EMPTY_HEADING;
+      const currentCompass = compassHeadingRef?.current;
+      const compassHeadingRaw = currentCompass?.headingDeg ?? current.rawCompassHeadingDeg;
+      const compass =
+        compassHeadingRaw === null
+          ? null
+          : ((compassHeadingRaw % 360) + 360) % 360;
+      const gyro = ((current.fusedHeadingDeg % 360) + 360) % 360;
+      const selected = compass ?? gyro;
+      const sourceLabel = currentCompass?.source ?? current.deviceHeadingSource;
+      const source = compass === null
+        ? 'gyro-fallback'
+        : `real-compass:${sourceLabel ?? 'unknown'}`;
+      const northRelative = ((-selected % 360) + 360) % 360;
+      console.info(
+        `[CompassTrace][Widget] source=${source}`
+        + ` selectedHeading=${selected.toFixed(2)}`
+        + ` northRelativeToScreen=${northRelative.toFixed(2)}`
+        + ` compass=${compass === null ? 'n/a' : compass.toFixed(2)}`
+        + ` gyro=${gyro.toFixed(2)}`
+        + ` webkitCompass=${currentCompass?.webkitCompassHeadingDeg == null ? 'n/a' : currentCompass.webkitCompassHeadingDeg.toFixed(2)}`,
+      );
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [headingRef, compassHeadingRef]);
 
   if (!isOpen) {
     return (
@@ -130,7 +181,7 @@ export function CompassWidget({
         <span className="compass-widget__center" />
       </div>
 
-      {!enabled && <p className="compass-widget__status">Enable gyro to start heading updates.</p>}
+      {!enabled && <p className="compass-widget__status">Enable compass sensor to start north updates.</p>}
 
       <div className="compass-widget__readout">
         <span>Control heading (gyro)</span>
@@ -143,6 +194,14 @@ export function CompassWidget({
       <div className="compass-widget__readout">
         <span>Compass</span>
         <strong>{normalizedCompass === null ? 'N/A' : `${normalizedCompass.toFixed(1)} deg`}</strong>
+      </div>
+      <div className="compass-widget__readout">
+        <span>Heading used for north</span>
+        <strong>{needleHeadingDeg.toFixed(1)} deg</strong>
+      </div>
+      <div className="compass-widget__readout">
+        <span>North is</span>
+        <strong>{northRelativeDeg.toFixed(1)} deg ({northRelativeText})</strong>
       </div>
 
       <button
@@ -157,22 +216,22 @@ export function CompassWidget({
         <div className="compass-widget__diagnostics" aria-label="Device and map heading diagnostics">
           <strong>DEVICE SENSOR DATA</strong>
           <div>Sensor event: deviceorientation</div>
-          <div>Event absolute: {heading.orientationAbsolute ? 'true' : 'false'}</div>
+          <div>Event absolute: {(compassHeadingData?.orientationAbsolute ?? heading.orientationAbsolute) ? 'true' : 'false'}</div>
           <div>Raw alpha: {diagnosticNumber(heading.rawAlphaDeg)}</div>
           <div>Raw beta: {diagnosticNumber(heading.rawBetaDeg)}</div>
           <div>Raw gamma: {diagnosticNumber(heading.rawGammaDeg)}</div>
-          <div>webkitCompassHeading: {diagnosticNumber(heading.webkitCompassHeadingDeg)}</div>
-          <div>webkitCompassAccuracy: {diagnosticNumber(heading.webkitCompassAccuracyDeg)}</div>
+          <div>webkitCompassHeading: {diagnosticNumber(compassHeadingData?.webkitCompassHeadingDeg ?? heading.webkitCompassHeadingDeg)}</div>
+          <div>webkitCompassAccuracy: {diagnosticNumber(compassHeadingData?.webkitCompassAccuracyDeg ?? heading.webkitCompassAccuracyDeg)}</div>
           <div>
-            Screen orientation: {heading.screenOrientationType ?? 'unknown'} ({heading.screenOrientationAngleDeg === null ? 'angle unavailable' : `${heading.screenOrientationAngleDeg} deg`})
+            Screen orientation: {(compassHeadingData?.screenOrientationType ?? heading.screenOrientationType) ?? 'unknown'} ({(compassHeadingData?.screenOrientationAngleDeg ?? heading.screenOrientationAngleDeg) === null ? 'angle unavailable' : `${compassHeadingData?.screenOrientationAngleDeg ?? heading.screenOrientationAngleDeg} deg`})
           </div>
           <div>
-            Calculated device heading: {diagnosticNumber(heading.rawCompassHeadingDeg)} ({heading.deviceHeadingSource ?? 'no absolute compass source'})
+            Calculated device heading: {diagnosticNumber(compassHeadingData?.headingDeg ?? heading.rawCompassHeadingDeg)} ({compassSource ?? 'no absolute compass source'})
           </div>
           <div>Calculated map bearing: {mapBearingDeg === null ? 'unavailable (no active route segment)' : `${mapBearingDeg} deg`}</div>
           <div>Compass correction/offset: none applied</div>
           <div>Reference: WebKit compass is magnetic; absolute alpha is browser/OS reference. No true-north declination is applied.</div>
-          <div>Compass needle source: gyro alpha / fusedHeadingDeg ({normalizedGyroControlHeading.toFixed(1)} deg)</div>
+          <div>Compass needle source: {needleSourceLabel} ({needleHeadingDeg.toFixed(1)} deg)</div>
           <div>North = 0 deg; East = 90 deg; South = 180 deg; West = 270 deg</div>
         </div>
       )}

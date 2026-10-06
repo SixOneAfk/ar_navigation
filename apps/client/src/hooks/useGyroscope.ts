@@ -52,25 +52,6 @@ function normalizeHeadingDeg(value: number) {
   return ((value % 360) + 360) % 360;
 }
 
-function shortestHeadingDeltaDeg(from: number, to: number) {
-  return ((to - from + 540) % 360) - 180;
-}
-
-function getCompassHeadingDeg(event: DeviceOrientationEvent): number | null {
-  const webkitHeading = (
-    event as DeviceOrientationEvent & { webkitCompassHeading?: number }
-  ).webkitCompassHeading;
-  if (typeof webkitHeading === 'number' && Number.isFinite(webkitHeading)) {
-    return normalizeHeadingDeg(webkitHeading);
-  }
-
-  if (event.absolute && typeof event.alpha === 'number' && Number.isFinite(event.alpha)) {
-    return normalizeHeadingDeg(event.alpha);
-  }
-
-  return null;
-}
-
 function getScreenOrientation() {
   const legacyAngle = (window as Window & { orientation?: number }).orientation;
   return {
@@ -151,7 +132,6 @@ export function useGyroscope() {
   const lastMotionTsRef = useRef<number | null>(null);
   const lastOrientationValuesRef = useRef<Orientation | null>(null);
   const lastMotionValuesRef = useRef<MotionData | null>(null);
-  const lastCompassHeadingRef = useRef<number | null>(null);
 
   useEffect(() => {
     calibrationRef.current = calibration;
@@ -197,64 +177,31 @@ export function useGyroscope() {
       orientationRef.current = nextOrientation;
       lastOrientationValuesRef.current = nextOrientation;
 
-      const rawGyroHeadingDeg = normalizeHeadingDeg(nextOrientation.alpha);
-      const rawCompassHeadingDeg = getCompassHeadingDeg(e);
-      const webkitCompassHeadingDeg = (
-        e as DeviceOrientationEvent & { webkitCompassHeading?: number }
-      ).webkitCompassHeading;
-      const webkitCompassAccuracyDeg = (
-        e as DeviceOrientationEvent & { webkitCompassAccuracy?: number }
-      ).webkitCompassAccuracy;
+      // Use the raw event alpha for heading so camera calibration offsets do not shift north.
+      const rawEventAlphaDeg =
+        typeof e.alpha === 'number' && Number.isFinite(e.alpha) ? e.alpha : nextOrientation.alpha;
+      const rawGyroHeadingDeg = normalizeHeadingDeg(rawEventAlphaDeg);
       const screenOrientation = getScreenOrientation();
-      const hasCompass = rawCompassHeadingDeg !== null;
-      const deviceHeadingSource = typeof webkitCompassHeadingDeg === 'number'
-        && Number.isFinite(webkitCompassHeadingDeg)
-        ? 'webkitCompassHeading'
-        : e.absolute && typeof e.alpha === 'number' && Number.isFinite(e.alpha)
-          ? 'absolute-alpha'
-          : null;
 
-      // Keep gyro and compass independent: gyro drives motion heading, compass is diagnostic/anchor only.
+      // Gyro service drives camera/motion heading only; compass heading is handled by useCompass.
       const fusedHeadingDeg = rawGyroHeadingDeg;
-      let confidence = 0;
-      if (hasCompass) {
-        const compassJump =
-          lastCompassHeadingRef.current === null
-            ? 0
-            : Math.abs(
-                shortestHeadingDeltaDeg(
-                  lastCompassHeadingRef.current,
-                  rawCompassHeadingDeg,
-                ),
-              );
-
-        // Confidence reflects compass stability only, not a fused control signal.
-        confidence = Math.max(0.35, 1 - Math.min(compassJump / 90, 1));
-        lastCompassHeadingRef.current = rawCompassHeadingDeg;
-      }
 
       headingRef.current = {
         rawGyroHeadingDeg,
-        rawCompassHeadingDeg,
+        rawCompassHeadingDeg: null,
         fusedHeadingDeg,
-        hasCompass,
-        confidence,
+        hasCompass: false,
+        confidence: 0,
         timestamp: e.timeStamp ?? Date.now(),
         rawAlphaDeg: typeof e.alpha === 'number' && Number.isFinite(e.alpha) ? e.alpha : null,
         rawBetaDeg: typeof e.beta === 'number' && Number.isFinite(e.beta) ? e.beta : null,
         rawGammaDeg: typeof e.gamma === 'number' && Number.isFinite(e.gamma) ? e.gamma : null,
-        webkitCompassHeadingDeg: typeof webkitCompassHeadingDeg === 'number'
-          && Number.isFinite(webkitCompassHeadingDeg)
-          ? webkitCompassHeadingDeg
-          : null,
-        webkitCompassAccuracyDeg: typeof webkitCompassAccuracyDeg === 'number'
-          && Number.isFinite(webkitCompassAccuracyDeg)
-          ? webkitCompassAccuracyDeg
-          : null,
+        webkitCompassHeadingDeg: null,
+        webkitCompassAccuracyDeg: null,
         orientationAbsolute: e.absolute,
         screenOrientationAngleDeg: screenOrientation.angle,
         screenOrientationType: screenOrientation.type,
-        deviceHeadingSource,
+        deviceHeadingSource: null,
       };
 
       if (orientationEventCountRef.current === 1) {
@@ -335,8 +282,8 @@ export function useGyroscope() {
 
     logger.current.info('Gyroscope', `DeviceOrientation support=${supportsOrientation}; DeviceMotion support=${supportsMotion}`);
 
-    if (!supportsOrientation && !supportsMotion) {
-      logger.current.warn('Gyroscope', 'Device sensors are unsupported in this browser');
+    if (!supportsOrientation) {
+      logger.current.warn('Gyroscope', 'Device orientation is unsupported in this browser');
       setState('unsupported');
       return;
     }
@@ -386,11 +333,11 @@ export function useGyroscope() {
         attachMotionListener();
       }
 
-      if (orientationGranted || motionGranted) {
+      if (orientationGranted) {
         logger.current.info('Gyroscope', 'Sensor permission request completed successfully');
         setState('granted');
       } else {
-        logger.current.warn('Gyroscope', 'Sensor permission denied');
+        logger.current.warn('Gyroscope', 'Gyroscope permission denied (orientation was not granted)');
         setState('denied');
       }
     } catch (error) {

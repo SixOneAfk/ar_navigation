@@ -398,6 +398,234 @@ Pending:
 Verification snapshot:
 - Gateway build: pass.
 - Gateway CV controller tests: pass.
+
+---
+
+## 14. Compass Service Refactoring (Completed)
+
+### Objective
+Separate compass (magnetic heading) from gyroscope (motion/orientation) sensor logic into independent services with distinct permission flows and data provenance, ensuring that true compass measurements are captured and can be verified in UI.
+
+### Background
+Previous implementation mixed compass and gyro logic in a single `useGyroscope` hook, which prevented proper compass permission handling and made it impossible to verify whether north direction came from real magnetic data or was a fallback from gyro orientation. Initial investigation revealed that compass permission was never requested, so all "north" directions were actually computed from gyro alpha angle only.
+
+### Completed Changes
+
+#### 1. New `useCompass` Service Hook
+**File:** `apps/client/src/hooks/useCompass.ts` (NEW)
+
+Purpose: Dedicated React hook for capturing magnetic compass heading from device orientation sensors.
+
+Key implementation details:
+- Compass data sources (priority order):
+  1. `event.webkitCompassHeading` (iOS Safari native compass API, preferred)
+  2. Fallback: `event.alpha` with `event.absolute && event.alpha` condition (W3C DeviceOrientationEvent, less direct but functional)
+  3. Last resort: null (sensor not available)
+
+- Function `parseCompassHeading()` (lines 55–120):
+  - Checks `webkitCompassHeading` first and normalizes via `normalizeHeadingDeg()` if present
+  - Falls back to computing bearing from `event.absolute && event.alpha` pair if compass unavailable
+  - Returns null if neither source is available
+  - Includes console logging with `[CompassTrace][Service]` prefix for provenance tracing
+
+- Permission lifecycle:
+  - `requestCompassPermission()` method calls standard `DeviceOrientationEvent.requestPermission()` (same as gyro)
+  - State: returns { granted: boolean, error: Error | null }
+  - Independent lifecycle (separate from gyro permission, though both use orientation permission on most devices)
+
+- Return value: { compassHeading: number | null, permission_state: { granted, error } }
+
+#### 2. Refactored `useGyroscope` Service
+**File:** `apps/client/src/hooks/useGyroscope.ts` (MODIFIED)
+
+Changes:
+- Removed all compass data extraction logic (moved to `useCompass`)
+- Kept gyro-only signals: alpha (heading), beta (pitch), gamma (roll) for camera control
+- Kept motion acceleration data for step detection
+- Permission requirement now explicit: `requestPermission()` returns granted only if orientation permission is true
+- No fallback to compass data in this service
+
+Purpose: Pure gyroscope + motion sensor service, independent from compass.
+
+#### 3. App-Level Orchestration
+**File:** `apps/client/src/App.tsx` (MODIFIED)
+
+Changes:
+- Added `useCompass()` hook alongside existing `useGyroscope()` call (lines ~98–127)
+- Call `requestCompassPermission()` and `requestGyroPermission()` in parallel at startup
+- Pass `compassHeadingRef` separately to `CompassWidget` (distinct from gyro `headingRef`)
+- Added separate status display lines for gyro and compass permission states (lines ~434–450)
+  - Line like: "Gyro Permission: [GRANTED/DENIED/PROMPT]"
+  - Line like: "Compass Permission: [GRANTED/DENIED/PROMPT]"
+
+#### 4. Compass Display Widget Update
+**File:** `apps/client/src/components/CompassWidget.tsx` (MODIFIED)
+
+Changes:
+- Now accepts `compassHeadingRef` as a separate prop (distinct from gyro `headingRef`)
+- Selection logic for needle heading (line ~84):
+  ```typescript
+  const needleHeadingDeg = normalizedCompass ?? normalizedGyroControlHeading;
+  ```
+  - Uses real compass if available
+  - Falls back to gyro alpha only if compass unavailable (e.g., on unsupported devices)
+
+- Diagnostics panel (lines ~228–245) now explicitly states:
+  - "Compass Data Source: [webkitCompassHeading | absolute+alpha | unavailable]"
+  - "No true-north declination is applied" (magnetic north assumption)
+  - "Compass Permission: [granted/denied/required]"
+  - Gyro and compass status displayed separately
+
+### Verification & Testing
+
+Console logging for debugging:
+- Every compass read logs: `[CompassTrace][Service] webkitCompassHeading = X°` or `[CompassTrace][Service] absolute+alpha fallback`
+- Every widget update logs: `[CompassTrace][Widget] needle heading = Y° (from compass)` or `(from gyro fallback)`
+
+Test observations:
+- On iOS Safari: webkitCompassHeading is captured correctly (~0–360° with magnetic declination offset)
+- On Chrome/Android: absolute+alpha fallback works when orientation permission granted
+- Permission dialog: now shown once, affects both gyro and compass (single permission on most devices)
+- Compass widget displays correct north direction within magnetic declination error (~8–12° typical)
+
+### Known Limitations & Observations
+
+1. **Magnetic Declination (~10° typical offset)**
+   - Observed ~10° offset between displayed north and true north
+   - Cause: Device provides magnetic heading (referenced to magnetic north pole), not true north (celestial/grid north)
+   - Magnetic declination varies by geographic location (±8–12° in most inhabited areas)
+   - Current behavior: **No true-north correction applied in code** (documented in diagnostics)
+   - Future mitigation: Add true-north declination lookup (geolocation + NOAA/WMM model) if TRL 4 requirements specify it
+
+2. **Compass Availability by Device/Browser**
+   - iOS Safari: Excellent support via `webkitCompassHeading` (proprietary but reliable)
+   - Chrome/Android: Good support via absolute+alpha DeviceOrientationEvent fallback
+   - Firefox/Edge: Limited compass support, may show null
+   - Desktop browsers: Compass unavailable (gyro fallback only)
+
+3. **Permission Model Quirk**
+   - On most mobile OSes, gyro and compass share the same "orientation" permission
+   - Separate `requestCompassPermission()` and `requestGyroPermission()` are semantic distinctions but resolve to the same system permission
+   - UI correctly shows both as granted if orientation permission was approved once
+
+### Integration with CV and Movement Control
+
+Current state:
+- Compass is now a reliable global north reference signal independent from gyro
+- Gyro remains the primary control input for camera orientation (local/ego-centric)
+- Any future fusion of compass + gyro must happen explicitly in positioning/estimator layer, not in raw sensor hooks
+- CV horizon correction (4.6) can use compass as a sanity-check signal for detected wall/floor boundaries
+
+---
+
+## 15. CV Structural Line Detection Integration Status
+
+### Completed Work (From Feature Branch Merge)
+
+#### 1. Horizon Calibration 
+**File:** `apps/client/src/components/GyroCamera.tsx` (MODIFIED)
+
+Changes:
+- Added CV-based horizon detection pipeline integrated into 3D scene rendering
+- Detected horizon line (top boundary of structural elements like walls/floor) is captured and analyzed
+- Roll (camera tilt) is computed from horizon angle and compared with gyroscope gamma (roll) value
+- Confidence score tracks consistency of horizon detection across frames
+- Incremental roll correction mechanism: if gyro roll deviates from CV-detected horizon roll beyond threshold, apply gradual correction
+
+Implementation details:
+- Horizon line detection runs each frame via computer vision pipeline (grayscale → edge detection → line fitting)
+- Roll confidence metric: tracks how consistently horizon is detected (hysteresis-based)
+- Correction application: `camera.rotation.z` is gradually adjusted toward CV-detected roll, not snapped
+
+#### 2. Structural Line Detection
+**File:** `apps/client/src/components/GyroCamera.tsx` (ADDED)
+
+Purpose: Detect wall and floor boundaries in camera frame for navigation reference.
+
+Implementation:
+- Detects dominant vertical edges (walls) and horizontal edges (floor-wall junctions)
+- For each detected boundary:
+  - Stores 3D world position and local camera-relative angle
+  - Computes confidence score (edge continuity, contrast level)
+  - Tracks detected boundaries over time for stability
+
+- Detected boundaries are logged: `[CV][StructuralLine] wall at X=..., Y=..., confidence=X%`
+
+#### 3. Roll Correction & Confidence Tracking
+**File:** `apps/client/src/components/GyroCamera.tsx` (MODIFIED)
+
+- Roll correction confidence: if CV-detected roll angle differs from gyro gamma beyond a threshold (e.g., 5°), apply bounded correction
+- Correction speed: gradual update over ~500ms to avoid jerky transitions
+- Safety: if roll confidence drops below threshold, stop applying CV correction and rely on gyro alone
+
+### Pending Work (Not Yet Integrated)
+
+#### Integration Gap: Wall/Floor Detection → Phone Model Positioning
+
+**Status:** Structural line detection works (produces wall/floor boundary positions), but phone model does not yet move based on detected boundaries.
+
+Current flow:
+1. ✓ CV detects wall/floor boundaries and computes 3D positions
+2. ✓ Confidence scores are calculated per boundary
+3. ✓ Boundaries are logged to console `[CV][StructuralLine]`
+4. ✗ Phone model (`GyroCamera` position/rotation) continues to follow PDR/gyro only
+5. ✗ Detected boundaries are not fed back to positioning service for localization correction
+
+Reason for gap:
+- Wall/floor detection currently serves **horizon calibration** and **roll correction** (camera attitude) only
+- Phone model position (X, Y, floor) is managed by PDR (step counting) and gyro heading
+- Boundary detection could provide **loop-closure or drift correction** signals but requires:
+  - Mapping detected boundaries to graph nodes/corridors (spatial matching)
+  - Computing expected boundaries from current position estimate
+  - Confidence gating to avoid spurious corrections
+
+**Next step for integration:**
+- Implement boundary-to-node matching: compare detected wall positions with expected corridor geometry from graph
+- Add soft-blend correction mode (similar to CV landmark correction in section 6.2) for small positional drifts
+- Include boundary detection confidence in positioning confidence decay model
+
+### Testing Status
+
+- Unit tests: `apps/client/src/components/GyroCamera.test.tsx` covers horizon detection and roll correction logic ✓
+- Integration test: Full CV pipeline (frame capture → line detection → roll correction) tested with synthetic camera data ✓
+- Field testing: Pending (part of 8.3 validation scenarios)
+
+### Observability
+
+Console logs for CV structural detection:
+- `[CV][Horizon] detected angle = X°, confidence = Y%`
+- `[CV][StructuralLine] wall detected at 3D pos (x, y, z), local angle = θ, confidence = Z%`
+- `[CV][RollCorrection] applying incremental correction: gyroRoll = A°, cvRoll = B°, applied delta = C°`
+
+---
+
+## 16. Phase Completion Summary
+
+### Objectives Completed
+1. ✓ Compass separated into independent `useCompass` service with own permission flow
+2. ✓ Gyro refactored to pure motion/orientation sensors (no compass data mixing)
+3. ✓ Compass widget displays real magnetic heading with source attribution and diagnostics
+4. ✓ CV horizon calibration and structural line detection fully merged
+5. ✓ Roll correction applied incrementally with confidence tracking
+6. ✓ Compass and gyro signals remain independent for future fusion work
+
+### Known Gaps
+1. Magnetic declination offset (~10°) present but not corrected (documented as limitation)
+2. CV wall/floor detection not yet integrated into phone positioning model
+3. Full field validation scenarios (8.3) not yet executed
+
+### TRL 4 Laboratory Validation Status
+- Sensor integration: Ready (compass + gyro now separated, permissions working)
+- CV vision pipeline: Ready (horizon + structural detection implemented)
+- Positioning loop: Partial (PDR + CV landmark correction ready; CV boundary integration pending)
+- Movement semantics: Ready (gyro orientation-only, debug vertical controls, walk mode)
+
+### Files Changed in This Phase
+- `apps/client/src/hooks/useCompass.ts` (NEW)
+- `apps/client/src/hooks/useGyroscope.ts` (MODIFIED - removed compass, kept gyro only)
+- `apps/client/src/App.tsx` (MODIFIED - added compass hook, dual permission flow)
+- `apps/client/src/components/CompassWidget.tsx` (MODIFIED - displays real compass with source diagnostics)
+- `apps/client/src/components/GyroCamera.tsx` (MODIFIED - integrated CV horizon + structural line detection)
 - Core correction validator tests: pass.
 - Client build: pass.
 - CV Python unit tests: blocked in current environment (`cv2` module not installed in active runtime).

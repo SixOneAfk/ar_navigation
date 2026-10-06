@@ -63,6 +63,6 @@ describe('CompassWidget sensor diagnostics', () => {
     expect(screen.getByText('Calculated map bearing: 90 deg')).toBeTruthy();
     expect(screen.getByText('Compass correction/offset: none applied')).toBeTruthy();
     expect(screen.getByText('Reference: WebKit compass is magnetic; absolute alpha is browser/OS reference. No true-north declination is applied.')).toBeTruthy();
-    expect(screen.getByText('Compass needle source: gyro alpha / fusedHeadingDeg (271.0 deg)')).toBeTruthy();
+    expect(screen.getByText('Compass needle source: real compass (webkitCompassHeading) (93.0 deg)')).toBeTruthy();
   });
 });
