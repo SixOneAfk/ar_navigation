@@ -11,6 +11,8 @@ const modelFrame: ModelSceneFrame = {
   center: { x: 0, y: 0, z: 0 },
   floorHeight: 0,
   position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
   bounds: {
     min: { x: -10, y: 0, z: -10 },
     max: { x: 10, y: 4, z: 10 },
@@ -98,6 +100,25 @@ describe('CameraPermissionPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show Model' }));
     expect(onModelVisibilityChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('keeps scene analysis opt-in and exposes experimental controls', () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    render(<CameraPermissionPanel isOpen onClose={vi.fn()} />);
+    const toggle = screen.getByRole('switch', { name: 'Experimental scene analysis: Off' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(screen.queryByLabelText('Read text (extra CPU work)')).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('Enable Camera to explore the scene.')).toBeTruthy();
+    expect(screen.getByText('Minimum confidence: 25%')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Minimum confidence: 25%'), { target: { value: '40' } });
+    expect(screen.getByText('Minimum confidence: 40%')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Read text (extra CPU work)'));
+    expect((screen.getByLabelText('Read text (extra CPU work)') as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole('switch'));
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('explains when no camera device is available', async () => {

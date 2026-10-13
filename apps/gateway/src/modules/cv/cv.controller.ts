@@ -3,10 +3,12 @@ import {
   BadRequestException,
   Body,
   Controller,
+  HttpException,
   Post,
 } from '@nestjs/common';
 import { CvScanDto } from './dto/cv-scan.dto';
 import { CvStructuralLinesDto } from './dto/cv-structural-lines.dto';
+import { CvSceneAnalysisDto } from './dto/cv-scene-analysis.dto';
 import { PositioningGrpcClient } from '../position/grpc/positioning-grpc.client';
 
 type MarkerPosition = {
@@ -78,6 +80,67 @@ export class CvController {
 
   constructor(private readonly positioningGrpcClient: PositioningGrpcClient) {
     console.log('[GATEWAY:CvController] Initialized');
+  }
+
+  @Post('scene-analysis')
+  async sceneAnalysis(@Body() dto: CvSceneAnalysisDto) {
+    if (
+      typeof dto.image_payload !== 'string' ||
+      !dto.image_payload ||
+      dto.image_payload.length > 2_000_000
+    ) {
+      throw new BadRequestException('A base64 image up to 2 MB is required');
+    }
+    const confidence = dto.minimum_confidence ?? 0.25;
+    if (
+      typeof confidence !== 'number' ||
+      !Number.isFinite(confidence) ||
+      confidence < 0.05 ||
+      confidence > 0.95 ||
+      (dto.include_text !== undefined && typeof dto.include_text !== 'boolean')
+    ) {
+      throw new BadRequestException('Invalid scene analysis settings');
+    }
+    try {
+      const response = await fetch(
+        `${this.cvServiceBaseUrl}/api/v1/scene-analysis`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_payload: dto.image_payload,
+            minimum_confidence: confidence,
+            include_text: dto.include_text ?? true,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 400 || response.status === 422) {
+          throw new BadRequestException(
+            'CV service rejected the image or settings',
+          );
+        }
+        throw new BadGatewayException(
+          'Scene analysis service returned an error',
+        );
+      }
+      const sceneAnalysis = (await response.json()) as Record<string, unknown>;
+      return {
+        status: 'accepted',
+        source: 'cv-scene-analysis',
+        receivedAt: new Date().toISOString(),
+        sequenceNumber: dto.sequence_number ?? 0,
+        sceneAnalysis,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new BadGatewayException(
+        'Scene analysis service is unavailable or timed out',
+      );
+    }
   }
 
   @Post('structural-lines')

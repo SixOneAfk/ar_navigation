@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from structural_lines import detect_structural_lines
 from wall_pose import estimate_camera_pose
+from scene_analysis import scene_analyzer
 
 try:
     import cv2
@@ -77,6 +78,35 @@ class NormalizedLine(BaseModel):
 class NormalizedPoint(BaseModel):
     x: float = Field(ge=0.0, le=1.0)
     y: float = Field(ge=0.0, le=1.0)
+
+
+class SceneAnalysisRequest(BaseModel):
+    image_payload: str = Field(min_length=1, max_length=2_000_000)
+    minimum_confidence: float = Field(default=0.25, ge=0.05, le=0.95)
+    include_text: bool = True
+
+
+class SceneDetection(BaseModel):
+    kind: str
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    polygon: list[NormalizedPoint] = Field(min_length=3, max_length=32)
+
+
+class SceneAnalysisResponse(BaseModel):
+    status: str
+    detector_status: str
+    text_status: str
+    model_name: str
+    vocabulary_size: int
+    detections: list[SceneDetection]
+    messages: list[str]
+    image_width: int
+    image_height: int
+    object_time_ms: float
+    text_time_ms: float
+    processing_time_ms: float
+    diagnostic_only: bool = True
 
 
 class WallOutline(BaseModel):
@@ -347,6 +377,16 @@ def _estimate_horizon_roll_deg(image: np.ndarray) -> tuple[Optional[float], floa
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cv-service"}
+
+
+@app.post("/api/v1/scene-analysis", response_model=SceneAnalysisResponse)
+def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
+    image = _decode_image(payload.image_payload)
+    if image.shape[0] > 960 or image.shape[1] > 1280:
+        raise HTTPException(status_code=400, detail="Scene frames must not exceed 1280x960")
+    return SceneAnalysisResponse(**scene_analyzer.analyze(
+        image, payload.minimum_confidence, payload.include_text,
+    ))
 
 
 @app.post("/api/v1/structural-lines", response_model=StructuralLinesResponse)

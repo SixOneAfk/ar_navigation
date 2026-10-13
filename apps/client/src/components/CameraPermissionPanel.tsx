@@ -9,6 +9,8 @@ import {
   sendStructuralLineFrame,
 } from '../utils/cvFrame';
 import { StructuralLineOverlay } from './StructuralLineOverlay';
+import { SceneAnalysisOverlay } from './SceneAnalysisOverlay';
+import { useSceneAnalysis } from '../hooks/useSceneAnalysis';
 import type { ModelSceneFrame } from '../navigation/navigationData';
 import {
   selectWallReference,
@@ -105,6 +107,13 @@ export function CameraPermissionPanel({
   const [framesProcessed, setFramesProcessed] = useState(0);
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [horizontalFovDeg, setHorizontalFovDeg] = useState(60);
+  const [sceneEnabled, setSceneEnabled] = useState(false);
+  const [sceneConfidence, setSceneConfidence] = useState(0.25);
+  const [sceneTextEnabled, setSceneTextEnabled] = useState(true);
+  const scene = useSceneAnalysis(
+    videoRef, canvasRef, sceneEnabled && cameraState === 'granted',
+    sceneConfidence, sceneTextEnabled,
+  );
 
   const diagnosticPose = structuralResult?.pose_estimate ?? null;
   const navigationPosition = diagnosticPose
@@ -381,6 +390,12 @@ export function CameraPermissionPanel({
         result={structuralResult}
         active={cameraState === 'granted'}
       />
+      <SceneAnalysisOverlay
+        videoRef={videoRef}
+        result={scene.snapshot?.result ?? null}
+        capturedAt={scene.snapshot?.capturedAt ?? 0}
+        active={sceneEnabled && cameraState === 'granted'}
+      />
 
       {isOpen && (
         <section className="camera-panel">
@@ -426,6 +441,75 @@ export function CameraPermissionPanel({
               >
                 {modelVisible ? 'Hide Model' : 'Show Model'}
               </button>
+            )}
+          </div>
+
+          <div className="camera-panel__scene">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sceneEnabled}
+              className="camera-panel__btn camera-panel__btn--secondary"
+              onClick={() => setSceneEnabled((enabled) => !enabled)}
+            >
+              Experimental scene analysis: {sceneEnabled ? 'On' : 'Off'}
+            </button>
+            {sceneEnabled && (
+              <>
+                <p className="camera-panel__diagnostic-note">
+                  Objects: cyan. Text: pink. Scores are model confidence, not
+                  verified accuracy. Diagnostic only; navigation is unchanged.
+                  Keep the phone steady: old outlines disappear after 3 seconds.
+                </p>
+                <label className="camera-panel__calibration-control" htmlFor="scene-confidence">
+                  <span>Minimum confidence: {Math.round(sceneConfidence * 100)}%</span>
+                  <input
+                    id="scene-confidence" type="range" min={5} max={95} step={5}
+                    value={Math.round(sceneConfidence * 100)}
+                    onChange={(event) => setSceneConfidence(Number(event.target.value) / 100)}
+                  />
+                </label>
+                <label className="camera-panel__scene-text">
+                  <input
+                    type="checkbox" checked={sceneTextEnabled}
+                    onChange={(event) => setSceneTextEnabled(event.target.checked)}
+                  />
+                  Read text (extra CPU work)
+                </label>
+                <p className="camera-panel__diagnostic-note" role="status">
+                  {cameraState !== 'granted' ? 'Enable Camera to explore the scene.'
+                    : scene.error ? scene.error
+                    : scene.processing && !scene.snapshot ? 'Preparing and analyzing the first frame...'
+                    : scene.snapshot?.result.status === 'busy' ? 'Analyzer busy; frame skipped.'
+                    : scene.snapshot ? `${scene.snapshot.result.detections.length} detections. ${scene.processing ? 'Analyzing next frame...' : 'Waiting for next frame.'}`
+                    : 'Waiting for a camera frame.'}
+                </p>
+                {scene.snapshot && (
+                  <>
+                    <dl className="camera-panel__result-grid">
+                      <div><dt>Objects</dt><dd>{scene.snapshot.result.detector_status}</dd></div>
+                      <div><dt>Text</dt><dd>{scene.snapshot.result.text_status}</dd></div>
+                      <div><dt>Vocabulary</dt><dd>{scene.snapshot.result.vocabulary_size}</dd></div>
+                      <div><dt>Object processing</dt><dd>{scene.snapshot.result.object_time_ms} ms</dd></div>
+                      <div><dt>Text processing</dt><dd>{scene.snapshot.result.text_time_ms} ms</dd></div>
+                      <div><dt>Scene round trip</dt><dd>{scene.snapshot.roundTripMs} ms</dd></div>
+                    </dl>
+                    {scene.snapshot.result.messages.map((message) => (
+                      <p className="camera-panel__diagnostic-note" data-state="error" key={message}>{message}</p>
+                    ))}
+                    <details className="camera-panel__diagnostics">
+                      <summary>Detected items ({scene.snapshot.result.detections.length})</summary>
+                      <ul className="camera-panel__scene-items">
+                        {scene.snapshot.result.detections.map((item, index) => (
+                          <li key={`${item.kind}-${index}`}>
+                            {item.kind === 'text' ? 'Text: ' : ''}{item.label} — {Math.round(item.confidence * 100)}%
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </>
+                )}
+              </>
             )}
           </div>
 

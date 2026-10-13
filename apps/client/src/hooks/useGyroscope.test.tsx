@@ -85,7 +85,7 @@ describe('useGyroscope', () => {
     expect(result.current.state).toBe('unsupported');
   });
 
-  it('stores valid orientation values and rejects invalid ones', () => {
+  it('stores raw orientation without interpreting compass data', () => {
     const { result } = renderHook(() => useGyroscope());
 
     act(() => {
@@ -114,10 +114,12 @@ describe('useGyroscope', () => {
     expect(result.current.headingRef.current.rawAlphaDeg).toBe(12);
     expect(result.current.headingRef.current.rawBetaDeg).toBe(-6);
     expect(result.current.headingRef.current.rawGammaDeg).toBe(4);
-    expect(result.current.headingRef.current.webkitCompassHeadingDeg).toBe(278);
-    expect(result.current.headingRef.current.webkitCompassAccuracyDeg).toBe(7);
+    expect(result.current.headingRef.current.webkitCompassHeadingDeg).toBeNull();
+    expect(result.current.headingRef.current.webkitCompassAccuracyDeg).toBeNull();
     expect(result.current.headingRef.current.orientationAbsolute).toBe(true);
-    expect(result.current.headingRef.current.deviceHeadingSource).toBe('webkitCompassHeading');
+    expect(result.current.headingRef.current.deviceHeadingSource).toBeNull();
+    expect(result.current.headingRef.current.rawCompassHeadingDeg).toBeNull();
+    expect(result.current.headingRef.current.hasCompass).toBe(false);
     expect(result.current.headingRef.current.fusedHeadingDeg).toBe(12);
   });
 

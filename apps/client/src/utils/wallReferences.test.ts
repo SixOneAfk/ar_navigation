@@ -11,6 +11,8 @@ const frame: ModelSceneFrame = {
   center: { x: 0, y: 0, z: 0 },
   floorHeight: 0,
   position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
   bounds: {
     min: { x: -10, y: 0, z: -10 },
     max: { x: 10, y: 4, z: 10 },

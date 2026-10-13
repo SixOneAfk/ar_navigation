@@ -56,6 +56,8 @@ cd apps/cv-service
 - Core route API: `POST /api/v1/route`
 - CV recalibration API: `POST /api/v1/recalibrate`
 - CV structural-line API: `POST /api/v1/structural-lines`
+- Gateway experimental scene analysis: `POST /api/v1/cv/scene-analysis`
+- CV experimental scene analysis: `POST /api/v1/scene-analysis`
 
 When camera access is enabled, the client sends centered 640x480 JPEG frames through the Gateway at up to five frames per second. The FastAPI service detects up to three connected floor-wall boundaries and estimates camera roll without running OCR. The client draws the detected boundaries over the live video and applies only stable, confidence-gated roll corrections to the Three.js camera.
 
@@ -77,3 +79,34 @@ but does not apply that position as a correction.
 The camera horizontal FOV defaults to 60 degrees and can be adjusted under
 `Structural diagnostics`. A calibrated device-specific FOV is required for
 reliable metric distance estimates.
+
+## Experimental Scene Exploration
+
+The Camera panel has an opt-in `Experimental scene analysis` switch. The normal
+structural-line pipeline remains separate and never runs the object detector.
+Scene exploration combines a cached YOLOE-26n prompt-free segmentation model
+(4,585 category names) with Tesseract sparse-text OCR. It does not apply navigation
+corrections or establish correspondence with the building model.
+
+Object contours are cyan, OCR bounds are pink, and labels include the predicted
+name and confidence score. A mask contour is used when available, otherwise a
+bounding box is shown. These are model scores, not calibrated correctness
+probabilities; objects, surfaces, tile patterns, and small lights may be missed
+or mislabeled even at high confidence. No heuristic rectangle is called a door
+without a model prediction. Floor and wall line tracking keeps its own colors.
+
+The experiment sends a fresh centered 640x480 JPEG over the existing Gateway,
+waits for completion, then waits another second before capturing again. Requests
+never overlap per client; the Python analyzer also rejects concurrent work as
+`busy` instead of queuing frames. CPU inference uses a 416-pixel model input and
+defaults to two Torch threads. OCR has a 1.5-second limit and can be disabled.
+Contours expire three seconds after capture, not after receiving the result.
+There is no object tracking between frames: hold the phone steady for evaluation.
+
+Prepare the optional runtime and weights once; see [QUICK_START.md](QUICK_START.md).
+Weights and settings stay in the ignored `apps/cv-service/models/` directory.
+No camera frames are saved or sent to an external recognition API. Model downloads
+only happen in the explicit preparation command, never in an HTTP request.
+The optional Ultralytics runtime and weights use AGPL-3.0; review its terms before
+distribution or production integration. Sources: [YOLOE documentation](https://docs.ultralytics.com/models/yoloe/),
+[ICCV 2025 paper](https://openaccess.thecvf.com/content/ICCV2025/papers/Wang_YOLOE_Real-Time_Seeing_Anything_ICCV_2025_paper.pdf).

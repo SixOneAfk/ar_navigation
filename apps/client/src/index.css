@@ -361,6 +361,35 @@ body,
   pointer-events: none;
 }
 
+.scene-analysis-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.camera-panel__scene {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid #ced8e6;
+}
+
+.camera-panel__scene-text {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.7rem 0;
+  font-size: 0.8rem;
+}
+
+.camera-panel__scene-items {
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
 .ar-canvas {
   position: absolute !important;
   inset: 0;

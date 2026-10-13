@@ -11,3 +11,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Local CV models and settings
+apps/cv-service/models/

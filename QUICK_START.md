@@ -91,7 +91,52 @@ Select `Enable Gyro` before enabling the camera so pitch-aware wall tracking is 
 
 Up to three connected floor-wall boundaries and wall outlines are drawn over the live video. The panel also shows boundary confidence, camera pitch and roll, candidate counts, CV processing time, and full round-trip time. Stable high-confidence roll estimates are used as a bounded correction for the Three.js camera orientation. When the camera points more than 30 degrees down, wall-pose estimation pauses while floor and roll tracking continue.
 
-The first OCR request can take longer while EasyOCR initializes and downloads model files to its local cache. Live structural-line tracking does not initialize or run EasyOCR.
+The first legacy OCR request can take longer while EasyOCR initializes and downloads model files to its local cache. Live structural-line tracking does not initialize or run EasyOCR.
+
+## Optional experimental scene analysis
+
+From the repo root, prepare the optional YOLOE runtime and official model weights:
+
+```bash
+cd apps/cv-service
+.venv/bin/python prepare_scene_model.py --install
+cd ../..
+```
+
+The command needs internet access once. It preserves the existing CPU torch and
+headless OpenCV packages, installs the optional runtime, downloads about 16 MB of
+model weights, and checks a prediction. Ultralytics and the model use AGPL-3.0.
+Tesseract must be available on the server (`tesseract --version`); install it with
+`sudo apt install tesseract-ocr tesseract-ocr-eng` on Ubuntu if necessary.
+Then launch the app with the normal command above; no extra server is required.
+
+In Camera, select `Enable Camera` and turn on `Experimental scene analysis`.
+Use `Hide Model` for an unobstructed view. Objects are cyan and text is pink.
+Adjust `Minimum confidence` to trade fewer false positives for fewer detections;
+turn off `Read text` to reduce CPU work. The panel shows separate object/OCR
+timings, full scene round-trip time, model readiness, vocabulary size, and a
+collapsible list of detected items. Turning the switch off aborts the client
+request, stops further scene frames, and clears its overlays without stopping
+normal floor and wall tracking. A server inference already running can finish.
+
+This is diagnostic only: no detected item changes your coordinates. Hold the
+phone steady; these are sampled-frame detections, not continuous tracking.
+Names and scores can be wrong, including doors, lights, and tile patterns.
+Old contours disappear after three seconds from capture. A missing model or
+Tesseract is reported in the panel; it does not disable structural-line tracking.
+
+Optional CV-service environment variables:
+
+- `CV_SCENE_THREADS=2`: Torch CPU thread limit (1 through 4).
+- `CV_SCENE_OCR_LANG=eng`: installed Tesseract language(s), for example `eng+lav`.
+  Additional language packs must be installed separately on the server.
+- `CV_SCENE_MODEL_PATH=models/yoloe-26n-seg-pf.pt`: local prompt-free YOLOE checkpoint.
+  Relative paths resolve against `apps/cv-service`. Only use trusted checkpoints.
+  Set it before both preparation and server startup to use a different scale,
+  such as `models/yoloe-26s-seg-pf.pt`; larger models trade speed for accuracy.
+
+Run all CV tests with `.venv/bin/python -m unittest discover -p 'test_*.py'` from
+`apps/cv-service`. Unit tests do not download or require the optional model.
 
 ## Optional notes
 
