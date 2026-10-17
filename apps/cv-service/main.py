@@ -5,10 +5,12 @@ import re
 from typing import Any, Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from structural_lines import detect_structural_lines
 from wall_pose import estimate_camera_pose
+from route_photo_matching import photo_route_matcher
+from scene_analysis import scene_analyzer
 
 try:
     import cv2
@@ -77,6 +79,35 @@ class NormalizedLine(BaseModel):
 class NormalizedPoint(BaseModel):
     x: float = Field(ge=0.0, le=1.0)
     y: float = Field(ge=0.0, le=1.0)
+
+
+class SceneAnalysisRequest(BaseModel):
+    image_payload: str = Field(min_length=1, max_length=2_000_000)
+    minimum_confidence: float = Field(default=0.25, ge=0.05, le=0.95)
+    include_text: bool = False
+
+
+class SceneDetection(BaseModel):
+    kind: str
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    polygon: list[NormalizedPoint] = Field(min_length=3, max_length=32)
+
+
+class SceneAnalysisResponse(BaseModel):
+    status: str
+    detector_status: str
+    text_status: str
+    model_name: str
+    vocabulary_size: int
+    detections: list[SceneDetection]
+    messages: list[str]
+    image_width: int
+    image_height: int
+    object_time_ms: float
+    text_time_ms: float
+    processing_time_ms: float
+    diagnostic_only: bool = True
 
 
 class WallOutline(BaseModel):
@@ -152,6 +183,15 @@ class StructuralLinesRequest(BaseModel):
     intrinsics_confidence: float = Field(default=0.35, ge=0.0, le=1.0)
 
 
+class PhotoRouteRequest(BaseModel):
+    image_payload: str = Field(min_length=1, max_length=2_000_000)
+    expected_point_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+    revision: str = Field(min_length=1, max_length=64)
+    minimum_score: float = Field(default=0.60, ge=0.40, le=0.95)
+    minimum_margin: float = Field(default=0.10, ge=0.05, le=0.50)
+    minimum_visible_fraction: float = Field(default=0.10, ge=0.05, le=0.80)
+
+
 class StructuralLinesResponse(BaseModel):
     detected: bool
     floor_boundaries: list[FloorBoundaryDetection] = Field(default_factory=list)
@@ -195,8 +235,13 @@ def _decode_image(payload: str) -> np.ndarray:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid base64 image payload: {exc}") from exc
 
+    if not binary:
+        raise HTTPException(status_code=400, detail="Image payload is empty")
     image_np = np.frombuffer(binary, dtype=np.uint8)
-    image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+    try:
+        image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+    except cv2.error as exc:
+        raise HTTPException(status_code=400, detail="Unable to decode image data") from exc
     if image is None:
         raise HTTPException(status_code=400, detail="Unable to decode image data")
 
@@ -347,6 +392,38 @@ def _estimate_horizon_roll_deg(image: np.ndarray) -> tuple[Optional[float], floa
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cv-service"}
+
+
+@app.get("/api/v1/photo-route")
+def get_photo_route(reload: bool = Query(default=False)) -> dict[str, Any]:
+    try:
+        return photo_route_matcher.catalog(force=reload)
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/api/v1/photo-route/match")
+def match_photo_route(payload: PhotoRouteRequest) -> dict[str, Any]:
+    image = _decode_image(payload.image_payload)
+    if image.shape[1] > 1280 or image.shape[0] > 960:
+        raise HTTPException(status_code=400, detail="Photo route frames must not exceed 1280x960")
+    try:
+        return photo_route_matcher.analyze(
+            image, payload.expected_point_id, payload.revision,
+            payload.minimum_score, payload.minimum_margin, payload.minimum_visible_fraction,
+        )
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/api/v1/scene-analysis", response_model=SceneAnalysisResponse)
+def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
+    image = _decode_image(payload.image_payload)
+    if image.shape[0] > 960 or image.shape[1] > 1280:
+        raise HTTPException(status_code=400, detail="Scene frames must not exceed 1280x960")
+    return SceneAnalysisResponse(**scene_analyzer.analyze(
+        image, payload.minimum_confidence, payload.include_text,
+    ))
 
 
 @app.post("/api/v1/structural-lines", response_model=StructuralLinesResponse)

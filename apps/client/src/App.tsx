@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from './navigation/useNavigation';
 import type { ModelSceneFrame } from './navigation/navigationData';
 import { calculateRollBiasDeg } from './utils/cvRoll';
+import { BUILDING_MODEL_NAME, BUILDING_MODEL_URL, WALL_POSE_ENABLED, WALL_POSE_PAUSED_MESSAGE } from './utils/modelAssets';
 import {
   parseWallReferenceCatalog,
   type CameraPoseSnapshot,
@@ -24,7 +25,7 @@ import {
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
-const MODEL_PATH = '/Floor%201_Rotated_Points.glb';
+const MODEL_PATH = BUILDING_MODEL_URL;
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
@@ -36,7 +37,7 @@ const CV_ROLL_MAX_APPLY_STEP_DEG = 1.5;
 const CV_ROLL_MIN_RESIDUAL_DEG = 0.25;
 const CV_ROLL_MAX_BIAS_DEG = 12;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
-type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | 'compass' | 'navigation' | null;
+type PanelId = 'camera' | 'photo-route' | 'gyro' | 'accel' | 'calibration' | 'compass' | 'navigation' | null;
 
 /**
  * CHANGE FROM INITIAL MAIN CLONE
@@ -83,7 +84,7 @@ export default function App() {
   });
   const [wallReferences, setWallReferences] = useState<WallReference[]>([]);
   const [wallReferenceError, setWallReferenceError] = useState<string | null>(
-    null,
+    WALL_POSE_ENABLED ? null : WALL_POSE_PAUSED_MESSAGE,
   );
 
   const accelConfig = useMemo(
@@ -140,6 +141,8 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
+    if (!WALL_POSE_ENABLED) return;
+
     const loadWallReferences = async () => {
       try {
         const response = await fetch(
@@ -151,7 +154,7 @@ export default function App() {
           );
         }
         const catalog = parseWallReferenceCatalog(await response.json());
-        const expectedModel = MODEL_PATH.split('/').pop();
+        const expectedModel = BUILDING_MODEL_NAME;
         if (catalog.source_model !== expectedModel) {
           throw new Error(
             `Wall catalog belongs to ${catalog.source_model}, expected ${expectedModel}.`,
@@ -260,6 +263,8 @@ export default function App() {
         wallReferenceError={wallReferenceError}
         modelVisible={modelVisible}
         onModelVisibilityChange={setModelVisible}
+        photoRouteOpen={openPanel === 'photo-route'}
+        onClosePhotoRoute={() => setOpenPanel(null)}
       />
 
 
@@ -271,6 +276,10 @@ export default function App() {
           onClick={() => togglePanel('camera')}
         >
           Camera
+        </button>
+        <button type="button" className="control-dock__btn" data-active={openPanel === 'photo-route'}
+          onClick={() => togglePanel('photo-route')}>
+          Photo Route
         </button>
         <button
           type="button"

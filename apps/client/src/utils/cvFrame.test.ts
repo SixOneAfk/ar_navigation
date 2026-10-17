@@ -4,6 +4,7 @@ import {
   cameraPitchFromDeviceOrientation,
   captureImageJpeg,
   captureJpegFrame,
+  capturePhotoRouteFrame,
   CV_FRAME_HEIGHT,
   CV_FRAME_WIDTH,
   sendCvFrame,
@@ -65,6 +66,35 @@ describe('captureJpegFrame', () => {
     const canvas = {} as HTMLCanvasElement;
 
     expect(captureJpegFrame(video, canvas)).toBeNull();
+  });
+});
+
+describe('capturePhotoRouteFrame', () => {
+  it.each([
+    [1080, 1920, 360, 640],
+    [480, 640, 480, 640],
+    [1280, 720, 640, 360],
+    [640, 480, 640, 480],
+    [1080, 1080, 554, 554],
+    [240, 320, 240, 320],
+  ])('preserves the full %sx%s camera frame as %sx%s without cropping', (width, height, targetWidth, targetHeight) => {
+    const drawImage = vi.fn();
+    const video = { readyState: 2, videoWidth: width, videoHeight: height } as HTMLVideoElement;
+    const canvas = {
+      width: 0, height: 0, getContext: vi.fn(() => ({ drawImage })),
+      toDataURL: vi.fn(() => 'data:image/jpeg;base64,full-frame'),
+    } as unknown as HTMLCanvasElement;
+    expect(capturePhotoRouteFrame(video, canvas)).toBe('data:image/jpeg;base64,full-frame');
+    expect(canvas.width).toBe(targetWidth);
+    expect(canvas.height).toBe(targetHeight);
+    expect(canvas.width * canvas.height).toBeLessThanOrEqual(640 * 480);
+    expect(drawImage).toHaveBeenCalledWith(video, 0, 0, width, height, 0, 0, targetWidth, targetHeight);
+    expect(canvas.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.8);
+  });
+
+  it('waits for a camera frame without touching the canvas', () => {
+    const video = { readyState: 1, videoWidth: 480, videoHeight: 640 } as HTMLVideoElement;
+    expect(capturePhotoRouteFrame(video, {} as HTMLCanvasElement)).toBeNull();
   });
 });
 

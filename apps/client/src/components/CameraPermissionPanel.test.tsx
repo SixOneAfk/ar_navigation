@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CameraPermissionPanel } from './CameraPermissionPanel';
+import { photoCatalog } from '../test/photoRouteFixtures';
 import type { ModelSceneFrame } from '../navigation/navigationData';
 import type {
   CameraPoseSnapshot,
@@ -11,6 +12,8 @@ const modelFrame: ModelSceneFrame = {
   center: { x: 0, y: 0, z: 0 },
   floorHeight: 0,
   position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
   bounds: {
     min: { x: -10, y: 0, z: -10 },
     max: { x: 10, y: 4, z: 10 },
@@ -69,8 +72,118 @@ describe('CameraPermissionPanel', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  function prepareCamera() {
+    const stop = vi.fn();
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,frame');
+    const video = document.querySelector('video');
+    if (!video) throw new Error('Camera video element is missing');
+    Object.defineProperties(video, {
+      readyState: { configurable: true, value: 2 },
+      videoWidth: { configurable: true, value: 640 },
+      videoHeight: { configurable: true, value: 480 },
+      srcObject: { configurable: true, writable: true, value: null },
+    });
+    vi.spyOn(video, 'play').mockResolvedValue();
+    return { getUserMedia, stop };
+  }
+
+  it('starts the camera without floor, wall, object, or OCR requests by default', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    render(<CameraPermissionPanel isOpen onClose={vi.fn()} />);
+    const camera = prepareCamera();
+    expect(screen.getByRole('switch', { name: 'Floor and wall analysis: Off' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('switch', { name: 'Object analysis: Off' }).getAttribute('aria-checked')).toBe('false');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Enable Camera' })); });
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(camera.getUserMedia).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector('.structural-line-overlay')).toBeNull();
+    expect(document.querySelector('.scene-analysis-overlay')).toBeNull();
+  });
+
+  it('aborts a floor request and discards late results when floor analysis is disabled', async () => {
+    vi.useFakeTimers();
+    let finish!: (response: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<CameraPermissionPanel isOpen onClose={vi.fn()} />);
+    const camera = prepareCamera();
+    fireEvent.click(screen.getByRole('switch', { name: 'Floor and wall analysis: Off' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Enable Camera' })); });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const signal = fetchMock.mock.calls[0][1]?.signal;
+    fireEvent.click(screen.getByRole('switch', { name: 'Floor and wall analysis: On' }));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { finish(new Response(JSON.stringify({ structuralLines: { detected: true } }))); });
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(document.querySelector('.structural-line-overlay')).toBeNull();
+    expect(camera.stop).not.toHaveBeenCalled();
+  });
+
+  it('enables object detection independently and stops requests and overlays on disable', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      sceneAnalysis: {
+        status: 'ready', detector_status: 'ready', text_status: 'disabled', model_name: 'test',
+        vocabulary_size: 2, detections: [], messages: [], image_width: 640, image_height: 480,
+        object_time_ms: 50, text_time_ms: 0, processing_time_ms: 50, diagnostic_only: true,
+      },
+    })));
+    render(<CameraPermissionPanel isOpen onClose={vi.fn()} />);
+    prepareCamera();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Enable Camera' })); });
+    fireEvent.click(screen.getByRole('switch', { name: 'Object analysis: Off' }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/cv/scene-analysis');
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string).include_text).toBe(false);
+    expect(document.querySelector('.scene-analysis-overlay')).not.toBeNull();
+    expect(document.querySelector('.structural-line-overlay')).toBeNull();
+    fireEvent.click(screen.getByRole('switch', { name: 'Object analysis: On' }));
+    await act(() => vi.advanceTimersByTimeAsync(3000));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(document.querySelector('.scene-analysis-overlay')).toBeNull();
+  });
+
+  it.each([true, false])('pauses optional modes for Photo Route and respects floor resume setting %s', async (keepFloorEnabled) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (url === '/api/v1/cv/photo-route') return new Response(JSON.stringify(photoCatalog()));
+      return new Promise<Response>(() => {});
+    });
+    const view = render(<CameraPermissionPanel isOpen onClose={vi.fn()} />);
+    const camera = prepareCamera();
+    fireEvent.click(screen.getByRole('switch', { name: 'Floor and wall analysis: Off' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Object analysis: Off' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Enable Camera' })); });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    const floorSignal = fetchMock.mock.calls.find(([url]) => url === '/api/v1/cv/structural-lines')?.[1]?.signal;
+    const sceneSignal = fetchMock.mock.calls.find(([url]) => url === '/api/v1/cv/scene-analysis')?.[1]?.signal;
+    view.rerender(<CameraPermissionPanel isOpen={false} onClose={vi.fn()} photoRouteOpen />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    fireEvent.click(screen.getByRole('button', { name: 'Start / Resume route' }));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(floorSignal?.aborted).toBe(true);
+    expect(sceneSignal?.aborted).toBe(true);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/cv/structural-lines')).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/cv/scene-analysis')).toHaveLength(1);
+    expect(document.querySelector('.structural-line-overlay')).toBeNull();
+    expect(document.querySelector('.scene-analysis-overlay')).toBeNull();
+    const photoSignal = fetchMock.mock.calls.find(([url]) => url === '/api/v1/cv/photo-route/match')?.[1]?.signal;
+    if (!keepFloorEnabled) fireEvent.click(screen.getByRole('switch', { name: 'Floor and wall analysis: On' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause route' }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(photoSignal?.aborted).toBe(true);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/cv/structural-lines')).toHaveLength(keepFloorEnabled ? 2 : 1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/cv/scene-analysis')).toHaveLength(2);
+    expect(camera.getUserMedia).toHaveBeenCalledOnce();
   });
 
   it('toggles model visibility from the camera controls', () => {
@@ -249,6 +362,7 @@ describe('CameraPermissionPanel', () => {
     });
     vi.spyOn(video, 'play').mockResolvedValue();
 
+    fireEvent.click(screen.getByRole('switch', { name: 'Floor and wall analysis: Off' }));
     fireEvent.click(screen.getByRole('button', { name: 'Enable Camera' }));
 
     expect(

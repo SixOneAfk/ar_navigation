@@ -87,13 +87,48 @@ ngrok http https://localhost:5173
 
 Use the ngrok HTTPS URL on the phone. In dev mode, the frontend now proxies same-origin `/api/*` requests to the gateway on `http://localhost:3000`, so the phone only needs one public URL.
 
-Select `Enable Gyro` before enabling the camera so pitch-aware wall tracking is available. Then open the Camera panel and select `Enable Camera`. The client captures centered 640x480 JPEG frames at up to five frames per second and sends them as base64 JSON to `POST /api/v1/cv/structural-lines`. Requests never overlap, so slower processing cannot create a frame queue.
+Select `Enable Gyro` for pitch-aware wall tracking. In Camera, select `Enable
+Camera`, then turn on `Floor and wall analysis` if needed. Floor/wall and object
+analysis are off by default; simply enabling the camera sends no CV frames.
+Enabled floor analysis sends centered 640x480 JPEG frames at up to five frames per
+second as base64 JSON to `POST /api/v1/cv/structural-lines`. Requests never overlap.
+Photo Route pauses both optional CV modes while running. Pausing or completing
+the route resumes only the modes you previously enabled.
 
 Up to three connected floor-wall boundaries and wall outlines are drawn over the live video. The panel also shows boundary confidence, camera pitch and roll, candidate counts, CV processing time, and full round-trip time. Stable high-confidence roll estimates are used as a bounded correction for the Three.js camera orientation. When the camera points more than 30 degrees down, wall-pose estimation pauses while floor and roll tracking continue.
 
 The first OCR request can take longer while EasyOCR initializes and downloads model files to its local cache. Live structural-line tracking does not initialize or run EasyOCR.
 
+## Optional object analysis
+
+The earlier scene-analysis experiment is also available, disabled by default.
+If its runtime and model were already prepared on this machine, no installation
+is necessary. Otherwise run this explicit preparation command from the repo root:
+
+```bash
+cd apps/cv-service
+.venv/bin/python prepare_scene_model.py --install
+cd ../..
+```
+
+Preparation needs network access and installs the optional Ultralytics runtime
+and YOLOE model. It preserves the base CPU torch and headless OpenCV dependencies.
+The optional runtime/model use AGPL-3.0. Camera requests never download weights.
+
+Enable `Object analysis` in Camera or Photo Route; it runs only with an active
+camera and while Photo Route is paused. Cyan contours show predicted objects.
+`Read text` in Camera optionally adds Tesseract OCR in pink; it is off by default.
+The confidence slider and separate object/OCR timings are in Camera. Disable the
+object switch to stop further requests and clear overlays. An inference already
+running on the server may finish. Detections are diagnostic, not navigation fixes.
+
 ## Optional notes
+
+- New photo-route experiment: open `Photo Route` and follow [PHOTO_ROUTE_GUIDE.md](PHOTO_ROUTE_GUIDE.md).
+  Points 1 through 4 need real photos; point 5 is disabled without deleting its files.
+  Photo Route preserves the full portrait/landscape camera image. A finish dialog
+  appears after the last enabled point is confirmed. The old wall-pose
+  catalog is disabled for the new model; floor tracking remains available.
 
 - The client loads the building model from `apps/client/public/Floor 1_Rotated_Points.glb`.
 - If you only want to demo the web UI, `npm run start:dev:all` is usually enough.

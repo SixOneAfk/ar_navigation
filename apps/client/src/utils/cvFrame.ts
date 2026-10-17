@@ -227,6 +227,23 @@ export function captureJpegFrame(
   return renderJpegFrame(video, video.videoWidth, video.videoHeight, canvas);
 }
 
+export function capturePhotoRouteFrame(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+): string | null {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (video.readyState < 2 || width === 0 || height === 0) return null;
+  const scale = Math.min(640 / width, 640 / height, Math.sqrt(640 * 480 / (width * height)), 1);
+  canvas.width = Math.max(1, Math.floor(width * scale));
+  canvas.height = Math.max(1, Math.floor(height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D context is unavailable');
+  // Keep the entire camera frame, including portrait top and bottom details.
+  context.drawImage(video, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+}
+
 export function captureImageJpeg(
   image: HTMLImageElement,
   canvas: HTMLCanvasElement,

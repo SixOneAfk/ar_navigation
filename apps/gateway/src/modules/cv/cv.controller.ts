@@ -3,10 +3,15 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  HttpException,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CvScanDto } from './dto/cv-scan.dto';
 import { CvStructuralLinesDto } from './dto/cv-structural-lines.dto';
+import { CvPhotoRouteDto } from './dto/cv-photo-route.dto';
+import { CvSceneAnalysisDto } from './dto/cv-scene-analysis.dto';
 import { PositioningGrpcClient } from '../position/grpc/positioning-grpc.client';
 
 type MarkerPosition = {
@@ -78,6 +83,149 @@ export class CvController {
 
   constructor(private readonly positioningGrpcClient: PositioningGrpcClient) {
     console.log('[GATEWAY:CvController] Initialized');
+  }
+
+  private async forwardPhotoRoute(path: string, body?: CvPhotoRouteDto) {
+    try {
+      const response = await fetch(
+        `${this.cvServiceBaseUrl}/api/v1/photo-route${path}`,
+        {
+          method: body ? 'POST' : 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 400 || response.status === 422) {
+          const detail = (await response.text()).slice(0, 240);
+          throw new BadRequestException(`Photo route rejected: ${detail}`);
+        }
+        throw new BadGatewayException('Photo route service returned an error');
+      }
+      return (await response.json()) as Record<string, unknown>;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadGatewayException(
+        'Photo route service is unavailable or timed out',
+      );
+    }
+  }
+
+  @Get('photo-route')
+  photoRoute(@Query('reload') reload?: string) {
+    if (reload !== undefined && reload !== 'true' && reload !== 'false') {
+      throw new BadRequestException('reload must be true or false');
+    }
+    return this.forwardPhotoRoute(reload === 'true' ? '?reload=true' : '');
+  }
+
+  @Post('photo-route/match')
+  matchPhotoRoute(@Body() dto: CvPhotoRouteDto) {
+    if (
+      typeof dto.image_payload !== 'string' ||
+      !dto.image_payload ||
+      dto.image_payload.length > 2_000_000
+    ) {
+      throw new BadRequestException('A base64 image up to 2 MB is required');
+    }
+    if (
+      typeof dto.expected_point_id !== 'string' ||
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(dto.expected_point_id) ||
+      typeof dto.revision !== 'string' ||
+      !dto.revision ||
+      dto.revision.length > 64
+    ) {
+      throw new BadRequestException(
+        'A valid expected point and reference revision are required',
+      );
+    }
+    const settings: Array<[number | undefined, number, number]> = [
+      [dto.minimum_score, 0.4, 0.95],
+      [dto.minimum_margin, 0.05, 0.5],
+      [dto.minimum_visible_fraction, 0.05, 0.8],
+    ];
+    if (
+      settings.some(
+        ([value, low, high]) =>
+          value !== undefined &&
+          (typeof value !== 'number' ||
+            !Number.isFinite(value) ||
+            value < low ||
+            value > high),
+      )
+    ) {
+      throw new BadRequestException('Invalid photo route thresholds');
+    }
+    return this.forwardPhotoRoute('/match', {
+      image_payload: dto.image_payload,
+      expected_point_id: dto.expected_point_id,
+      revision: dto.revision,
+      minimum_score: dto.minimum_score,
+      minimum_margin: dto.minimum_margin,
+      minimum_visible_fraction: dto.minimum_visible_fraction,
+    });
+  }
+
+  @Post('scene-analysis')
+  async sceneAnalysis(@Body() dto: CvSceneAnalysisDto) {
+    if (
+      typeof dto.image_payload !== 'string' ||
+      !dto.image_payload ||
+      dto.image_payload.length > 2_000_000
+    ) {
+      throw new BadRequestException('A base64 image up to 2 MB is required');
+    }
+    const confidence = dto.minimum_confidence ?? 0.25;
+    if (
+      typeof confidence !== 'number' ||
+      !Number.isFinite(confidence) ||
+      confidence < 0.05 ||
+      confidence > 0.95 ||
+      (dto.include_text !== undefined && typeof dto.include_text !== 'boolean')
+    ) {
+      throw new BadRequestException('Invalid scene analysis settings');
+    }
+    try {
+      const response = await fetch(
+        `${this.cvServiceBaseUrl}/api/v1/scene-analysis`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_payload: dto.image_payload,
+            minimum_confidence: confidence,
+            include_text: dto.include_text ?? false,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 400 || response.status === 422) {
+          throw new BadRequestException(
+            'CV service rejected the image or settings',
+          );
+        }
+        throw new BadGatewayException(
+          'Scene analysis service returned an error',
+        );
+      }
+      const sceneAnalysis = (await response.json()) as Record<string, unknown>;
+      return {
+        status: 'accepted',
+        source: 'cv-scene-analysis',
+        receivedAt: new Date().toISOString(),
+        sequenceNumber: dto.sequence_number ?? 0,
+        sceneAnalysis,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new BadGatewayException(
+        'Scene analysis service is unavailable or timed out',
+      );
+    }
   }
 
   @Post('structural-lines')

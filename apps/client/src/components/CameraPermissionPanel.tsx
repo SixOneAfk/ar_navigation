@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
   cameraPitchFromDeviceOrientation,
   captureJpegFrame,
@@ -9,6 +9,10 @@ import {
   sendStructuralLineFrame,
 } from '../utils/cvFrame';
 import { StructuralLineOverlay } from './StructuralLineOverlay';
+import { PhotoRoutePanel } from './PhotoRoutePanel';
+import { SceneAnalysisOverlay } from './SceneAnalysisOverlay';
+import { CvAnalysisControls } from './CvAnalysisControls';
+import { useSceneAnalysis } from '../hooks/useSceneAnalysis';
 import type { ModelSceneFrame } from '../navigation/navigationData';
 import {
   selectWallReference,
@@ -70,6 +74,8 @@ type CameraPermissionPanelProps = {
   wallReferenceError?: string | null;
   modelVisible?: boolean;
   onModelVisibilityChange?: (visible: boolean) => void;
+  photoRouteOpen?: boolean;
+  onClosePhotoRoute?: () => void;
 };
 
 export function CameraPermissionPanel({
@@ -84,12 +90,16 @@ export function CameraPermissionPanel({
   wallReferenceError = null,
   modelVisible = true,
   onModelVisibilityChange,
+  photoRouteOpen = false,
+  onClosePhotoRoute = () => {},
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureTimerRef = useRef<number | null>(null);
   const scanInFlightRef = useRef(false);
+  const photoRouteActiveRef = useRef(false);
+  const structuralEnabledRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(`camera-${Date.now()}`);
   const sequenceNumberRef = useRef(0);
@@ -105,6 +115,29 @@ export function CameraPermissionPanel({
   const [framesProcessed, setFramesProcessed] = useState(0);
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [horizontalFovDeg, setHorizontalFovDeg] = useState(60);
+  const [photoRouteActive, setPhotoRouteActive] = useState(false);
+  const [structuralEnabled, setStructuralEnabled] = useState(false);
+  const [sceneEnabled, setSceneEnabled] = useState(false);
+  const [sceneConfidence, setSceneConfidence] = useState(0.25);
+  const [sceneTextEnabled, setSceneTextEnabled] = useState(false);
+  const scene = useSceneAnalysis(
+    videoRef, canvasRef, sceneEnabled && cameraState === 'granted' && !photoRouteActive,
+    sceneConfidence, sceneTextEnabled,
+  );
+  const setFloorAnalysis = (enabled: boolean) => {
+    structuralEnabledRef.current = enabled;
+    setStructuralEnabled(enabled);
+  };
+  const onPhotoRouteTrackingChange = useCallback((running: boolean) => {
+    photoRouteActiveRef.current = running;
+    setPhotoRouteActive(running);
+    if (running) {
+      abortControllerRef.current?.abort();
+      setStructuralResult(null);
+    }
+  }, []);
+  const structuralFrameRef = useRef(captureAndSendFrame);
+  structuralFrameRef.current = captureAndSendFrame;
 
   const diagnosticPose = structuralResult?.pose_estimate ?? null;
   const navigationPosition = diagnosticPose
@@ -126,6 +159,20 @@ export function CameraPermissionPanel({
       stopMediaStream();
     };
   }, []);
+
+  useEffect(() => {
+    if (cameraState === 'granted' && structuralEnabled && !photoRouteActive) {
+      startFrameCapture();
+    } else {
+      stopFrameCapture();
+      setStructuralResult(null);
+      setScanState('idle');
+      setFramesProcessed(0);
+      setProcessingTimeMs(null);
+    }
+    return () => stopFrameCapture();
+    // Camera capture reads live refs; settings must not restart it every render.
+  }, [cameraState, structuralEnabled, photoRouteActive]);
 
   function stopMediaStream() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -193,7 +240,7 @@ export function CameraPermissionPanel({
   }
 
   async function submitStructuralFrame(imagePayload: string) {
-    if (scanInFlightRef.current) {
+    if (scanInFlightRef.current || !structuralEnabledRef.current || photoRouteActiveRef.current) {
       return;
     }
 
@@ -239,6 +286,7 @@ export function CameraPermissionPanel({
         },
         abortController.signal,
       );
+      if (abortController.signal.aborted || photoRouteActiveRef.current || !structuralEnabledRef.current) return;
       setStructuralResult(response.structuralLines);
       resolveStableRoll(response.structuralLines);
       setFramesProcessed((current) => current + 1);
@@ -246,6 +294,7 @@ export function CameraPermissionPanel({
       setScanState('success');
       setErrorMessage('');
     } catch (error) {
+      if (abortController.signal.aborted) return;
       if (error instanceof DOMException && error.name === 'AbortError') {
         return;
       }
@@ -257,14 +306,14 @@ export function CameraPermissionPanel({
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
       }
-      scanInFlightRef.current = false;
+      if (abortControllerRef.current === null) scanInFlightRef.current = false;
     }
   }
 
   async function captureAndSendFrame() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || scanInFlightRef.current) {
+    if (!video || !canvas || scanInFlightRef.current || photoRouteActiveRef.current || !structuralEnabledRef.current) {
       return;
     }
 
@@ -288,9 +337,9 @@ export function CameraPermissionPanel({
 
   function startFrameCapture() {
     stopFrameCapture();
-    void captureAndSendFrame();
+    void structuralFrameRef.current();
     captureTimerRef.current = window.setInterval(() => {
-      void captureAndSendFrame();
+      void structuralFrameRef.current();
     }, STRUCTURAL_FRAME_INTERVAL_MS);
   }
 
@@ -332,7 +381,6 @@ export function CameraPermissionPanel({
       }
 
       setCameraState('granted');
-      startFrameCapture();
     } catch (error) {
       stopFrameCapture();
       stopMediaStream();
@@ -372,14 +420,41 @@ export function CameraPermissionPanel({
     setErrorMessage('');
   }
 
+  const analysisControls = <CvAnalysisControls
+    floorEnabled={structuralEnabled} objectsEnabled={sceneEnabled} paused={photoRouteActive}
+    onFloorChange={setFloorAnalysis} onObjectsChange={setSceneEnabled}
+  />;
+
   return (
     <>
       <video ref={videoRef} className="camera-bg" autoPlay muted playsInline />
       <canvas ref={canvasRef} className="camera-capture" aria-hidden="true" />
-      <StructuralLineOverlay
+      {structuralEnabled && cameraState === 'granted' && !photoRouteActive && <StructuralLineOverlay
         videoRef={videoRef}
         result={structuralResult}
-        active={cameraState === 'granted'}
+        active={structuralEnabled && cameraState === 'granted' && !photoRouteActive}
+      />}
+      <SceneAnalysisOverlay
+        videoRef={videoRef} result={scene.snapshot?.result ?? null}
+        capturedAt={scene.snapshot?.capturedAt ?? 0}
+        active={sceneEnabled && cameraState === 'granted' && !photoRouteActive}
+      />
+      <PhotoRoutePanel
+        isOpen={photoRouteOpen}
+        onClose={onClosePhotoRoute}
+        videoRef={videoRef}
+        cameraActive={cameraState === 'granted'}
+        cameraRequesting={cameraState === 'requesting'}
+        cameraNotice={cameraState === 'insecure' ? 'Camera requires HTTPS or localhost.'
+          : cameraState === 'denied' ? 'Camera permission denied. Allow access in browser settings.'
+          : cameraState === 'unavailable' ? 'No camera device is available.'
+          : cameraState === 'unsupported' ? 'Camera APIs are not available in this browser.'
+          : errorMessage || 'Enable the camera to start the photo route.'}
+        onEnableCamera={() => void requestCamera()}
+        onTrackingChange={onPhotoRouteTrackingChange}
+        modelVisible={modelVisible}
+        onModelVisibilityChange={onModelVisibilityChange}
+        analysisControls={analysisControls}
       />
 
       {isOpen && (
@@ -394,7 +469,7 @@ export function CameraPermissionPanel({
             Close
           </button>
           <p className="camera-panel__text">
-            Use the live camera to track structural lines and estimate position.
+            Enable optional floor, wall, or object analysis when needed.
           </p>
 
           <div className="camera-panel__actions">
@@ -429,12 +504,64 @@ export function CameraPermissionPanel({
             )}
           </div>
 
+          {analysisControls}
+
+          {sceneEnabled && (
+            <div className="camera-panel__scene">
+              <p className="camera-panel__diagnostic-note">
+                Objects: cyan. Text: pink. Diagnostic only; navigation is unchanged.
+                Scores are model confidence, not verified accuracy.
+              </p>
+              <label className="camera-panel__calibration-control" htmlFor="scene-confidence">
+                <span>Minimum confidence: {Math.round(sceneConfidence * 100)}%</span>
+                <input id="scene-confidence" type="range" min={5} max={95} step={5}
+                  value={Math.round(sceneConfidence * 100)}
+                  onChange={(event) => setSceneConfidence(Number(event.target.value) / 100)} />
+              </label>
+              <label className="camera-panel__scene-text">
+                <input type="checkbox" checked={sceneTextEnabled}
+                  onChange={(event) => setSceneTextEnabled(event.target.checked)} />
+                Read text (extra CPU work)
+              </label>
+              <p className="camera-panel__diagnostic-note" role="status">
+                {photoRouteActive ? 'Object analysis paused for Photo Route.'
+                  : cameraState !== 'granted' ? 'Enable Camera to explore the scene.'
+                  : scene.error ? scene.error
+                  : scene.processing && !scene.snapshot ? 'Preparing and analyzing the first frame...'
+                  : scene.snapshot?.result.status === 'busy' ? 'Analyzer busy; frame skipped.'
+                  : scene.snapshot ? `${scene.snapshot.result.detections.length} detections. ${scene.processing ? 'Analyzing next frame...' : 'Waiting for next frame.'}`
+                  : 'Waiting for a camera frame.'}
+              </p>
+              {scene.snapshot && !photoRouteActive && <>
+                <dl className="camera-panel__result-grid">
+                  <div><dt>Objects</dt><dd>{scene.snapshot.result.detector_status}</dd></div>
+                  <div><dt>Text</dt><dd>{scene.snapshot.result.text_status}</dd></div>
+                  <div><dt>Vocabulary</dt><dd>{scene.snapshot.result.vocabulary_size}</dd></div>
+                  <div><dt>Object processing</dt><dd>{scene.snapshot.result.object_time_ms} ms</dd></div>
+                  <div><dt>Text processing</dt><dd>{scene.snapshot.result.text_time_ms} ms</dd></div>
+                  <div><dt>Scene round trip</dt><dd>{scene.snapshot.roundTripMs} ms</dd></div>
+                </dl>
+                {scene.snapshot.result.messages.map((message) => <p className="camera-panel__diagnostic-note" data-state="error" key={message}>{message}</p>)}
+                <details className="camera-panel__diagnostics">
+                  <summary>Detected items ({scene.snapshot.result.detections.length})</summary>
+                  <ul className="camera-panel__scene-items">
+                    {scene.snapshot.result.detections.map((item, index) => <li key={`${item.kind}-${index}`}>
+                      {item.kind === 'text' ? 'Text: ' : ''}{item.label} — {Math.round(item.confidence * 100)}%
+                    </li>)}
+                  </ul>
+                </details>
+              </>}
+            </div>
+          )}
+
           <p className="camera-panel__status" data-state={cameraState}>
             {cameraState === 'idle' && 'Camera is not active.'}
             {cameraState === 'requesting' &&
               'Waiting for browser permission...'}
             {cameraState === 'granted' &&
-              'Camera active. Tracking structural lines at up to 5 FPS.'}
+              (photoRouteActive ? 'Camera active. Photo route running; other CV modes paused.'
+                : structuralEnabled ? 'Camera active. Tracking structural lines at up to 5 FPS.'
+                : 'Camera active. Floor and wall analysis is off.')}
             {cameraState === 'denied' &&
               'Camera permission denied. Allow access in browser site settings.'}
             {cameraState === 'unsupported' &&
@@ -446,7 +573,7 @@ export function CameraPermissionPanel({
             {cameraState === 'error' && `Camera error: ${errorMessage}`}
           </p>
 
-          {(cameraState === 'granted' || scanState === 'error') && (
+          {structuralEnabled && !photoRouteActive && (cameraState === 'granted' || scanState === 'error') && (
             <div className="camera-panel__scan" aria-live="polite">
               <p className="camera-panel__scan-status" data-state={scanState}>
                 {scanState === 'idle' && 'Waiting for the first video frame.'}

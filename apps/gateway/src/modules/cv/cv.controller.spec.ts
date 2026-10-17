@@ -201,6 +201,136 @@ describe('CvController', () => {
     );
   });
 
+  it('loads and reloads photo references without calling positioning', async () => {
+    const catalog = { points: [], ready: false };
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(catalog), { status: 200 })),
+      );
+    expect(await controller.photoRoute('true')).toEqual(catalog);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://localhost:8000/api/v1/photo-route?reload=true',
+    );
+    expect(positioningGrpcClient.estimatePosition).not.toHaveBeenCalled();
+  });
+
+  it('forwards photo matching and its thresholds without position corrections', async () => {
+    const match = {
+      recognized_point_id: 'point-02',
+      expected_matched: true,
+      diagnostic_only: true,
+    };
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(match), { status: 200 }));
+    const request = {
+      image_payload: 'jpeg',
+      expected_point_id: 'point-02',
+      revision: 'abc',
+      minimum_score: 0.7,
+      minimum_margin: 0.15,
+      minimum_visible_fraction: 0.2,
+    };
+    expect(await controller.matchPhotoRoute(request)).toEqual(match);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(
+      request,
+    );
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeDefined();
+    expect(positioningGrpcClient.estimatePosition).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid photo matching input before forwarding', () => {
+    expect(() => controller.matchPhotoRoute({})).toThrow(BadRequestException);
+    expect(() =>
+      controller.matchPhotoRoute({
+        image_payload: 'jpeg',
+        expected_point_id: '../bad',
+        revision: 'abc',
+      }),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      controller.matchPhotoRoute({
+        image_payload: 'jpeg',
+        expected_point_id: 'point-01',
+        revision: 'abc',
+        minimum_score: Number.NaN,
+      }),
+    ).toThrow(BadRequestException);
+    expect(() => controller.photoRoute('invalid')).toThrow(BadRequestException);
+  });
+
+  it('reports photo matching service errors', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('unavailable'));
+    await expect(controller.photoRoute()).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
+  });
+
+  it('forwards diagnostic scene analysis without calling positioning', async () => {
+    const sceneAnalysis = {
+      detections: [],
+      diagnostic_only: true,
+      status: 'ready',
+    };
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(sceneAnalysis), { status: 200 }),
+      );
+    const result = await controller.sceneAnalysis({
+      image_payload: 'data:image/jpeg;base64,abc',
+      minimum_confidence: 0.4,
+      include_text: false,
+      sequence_number: 7,
+    });
+    expect(result.sceneAnalysis).toEqual(sceneAnalysis);
+    expect(result.sequenceNumber).toBe(7);
+    expect(positioningGrpcClient.estimatePosition).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://localhost:8000/api/v1/scene-analysis',
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      image_payload: 'data:image/jpeg;base64,abc',
+      minimum_confidence: 0.4,
+      include_text: false,
+    });
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeDefined();
+  });
+
+  it('rejects invalid experimental settings before forwarding', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch');
+    for (const minimum_confidence of [0, 1, Number.NaN]) {
+      await expect(
+        controller.sceneAnalysis({
+          image_payload: 'image',
+          minimum_confidence,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
+    await expect(controller.sceneAnalysis({})).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports experimental service failures without changing navigation', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('timeout'));
+    await expect(
+      controller.sceneAnalysis({ image_payload: 'image' }),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+    expect(positioningGrpcClient.estimatePosition).not.toHaveBeenCalled();
+  });
+
+  it('preserves invalid-image errors from the experimental service', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('', { status: 400 }));
+    await expect(
+      controller.sceneAnalysis({ image_payload: 'image' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('returns bad gateway when the CV service is unavailable', async () => {
     jest
       .spyOn(global, 'fetch')
