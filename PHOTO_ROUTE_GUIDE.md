@@ -27,10 +27,11 @@ Up to 40 images per point are indexed, in filename order; the panel reports any
 ignored or unusable files. A featureless wall or blurry photo may have too few
 visual details to be usable.
 
-On a fresh checkout the photo folders are empty. Their README files only keep
-the directories in Git; they are not sample images.
-Images are ignored by Git by default and must be copied separately to another
-server. The preparation does not download models or need new Python dependencies.
+Reference photos are tracked in Git alongside the route configuration. A checkout
+includes the photos committed to that branch; new or replaced photos must also be
+committed and pushed to share them with another machine. Folder README files are
+instructions, not sample images. Model weights remain ignored by Git. Photo-route
+preparation does not download models or need new Python dependencies.
 
 Use readable filenames such as `front-day.jpg`, `approach-left.jpg`, and
 `front-lights-on.jpg`. To replace an image, overwrite it or remove it and copy

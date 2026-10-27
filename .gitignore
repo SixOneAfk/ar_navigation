@@ -12,7 +12,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Local CV data
+# Local CV models
 apps/cv-service/models/
-apps/cv-service/route_photos/*/*
-!apps/cv-service/route_photos/*/README.md
