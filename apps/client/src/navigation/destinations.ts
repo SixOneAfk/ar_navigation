@@ -5,14 +5,16 @@ export type NavigableDestination = {
   name: string;
 };
 
-// Manually curated: add a destination here by JSON point id to make it selectable.
-// Intermediate routing points (e.g. internal branch nodes) must not be added.
-export const NAVIGABLE_DESTINATIONS: NavigableDestination[] = [
-  { id: 'Entrance', name: 'Entrance' },
-  { id: 'Student_Dep', name: 'Student Department' },
-];
+function readableLocationName(name: string) {
+  return name.replace(/_/g, ' ').replace(/\bDep\b/g, 'Department');
+}
 
-export function getValidDestinations(points: NavigationPoint[]): NavigableDestination[] {
+export function getValidDestinations(
+  points: NavigationPoint[],
+  namedLocations: Record<string, string> = {},
+): NavigableDestination[] {
   const pointIds = new Set(points.map((point) => point.id));
-  return NAVIGABLE_DESTINATIONS.filter((destination) => pointIds.has(destination.id));
+  return Object.entries(namedLocations)
+    .filter(([, pointId]) => pointIds.has(pointId))
+    .map(([name, pointId]) => ({ id: pointId, name: readableLocationName(name) }));
 }

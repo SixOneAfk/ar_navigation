@@ -10,31 +10,24 @@ import { NavigationRouteLine } from './components/NavigationRouteLine';
 import { NavigationArrow } from './components/NavigationArrow';
 import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystick';
 import { useGyroscope } from './hooks/useGyroscope';
-import { useCompass } from './hooks/useCompass';
 import { useAcceleration } from './hooks/useAcceleration';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigation } from './navigation/useNavigation';
 import type { ModelSceneFrame } from './navigation/navigationData';
-import { calculateRollBiasDeg } from './utils/cvRoll';
-import {
-  parseWallReferenceCatalog,
-  type CameraPoseSnapshot,
-  type WallReference,
-} from './utils/wallReferences';
 
 const INITIAL_NAV_POSITION = { x: 0, y: 1.6, z: 3.5 };
 const MODEL_SCENE_POSITION: [number, number, number] = [0, 0, -4];
-const MODEL_PATH = '/Floor%201_Rotated_Points.glb';
+const ACTIVE_BUILDING = 'full_GRAPH_no_fence';
+const MODEL_PATHS = {
+  full_GRAPH_no_fence: '/Floor%201__full_GRAPH_no_fence.glb',
+  full_GRAPH_no_fence_no_walls: '/Floor%201__full_GRAPH_no_fence_no_walls.glb',
+};
+const MODEL_PATH = MODEL_PATHS[ACTIVE_BUILDING];
 const DEFAULT_STEP_THRESHOLD = 1.15;
 const DEFAULT_STEP_DEBOUNCE_MS = 350;
 const DEFAULT_RAW_DEADBAND = 0.12;
 const DEFAULT_STEP_STRIDE_METERS = 0.65;
 const DEFAULT_VERTICAL_DEBUG_ENABLED = false;
-const CV_ROLL_MIN_CONFIDENCE = 0.65;
-const CV_ROLL_COOLDOWN_MS = 400;
-const CV_ROLL_MAX_APPLY_STEP_DEG = 1.5;
-const CV_ROLL_MIN_RESIDUAL_DEG = 0.25;
-const CV_ROLL_MAX_BIAS_DEG = 12;
 type MoveMode = 'off' | 'gyro' | 'buttons' | 'walk';
 type PanelId = 'camera' | 'gyro' | 'accel' | 'calibration' | 'compass' | 'navigation' | null;
 
@@ -72,19 +65,7 @@ export default function App() {
   const [debugVerticalEnabled, setDebugVerticalEnabled] = useState(DEFAULT_VERTICAL_DEBUG_ENABLED);
   const [headingDegrees, setHeadingDegrees] = useState(0);
   const [modelFrame, setModelFrame] = useState<ModelSceneFrame | null>(null);
-  const [modelVisible, setModelVisible] = useState(true);
   const navigation = useNavigation(modelFrame, INITIAL_NAV_POSITION.y);
-  const [horizonOffsetDeg, setHorizonOffsetDeg] = useState(0);
-  const lastCvHorizonAppliedAtRef = useRef(0);
-  const cameraPoseRef = useRef<CameraPoseSnapshot>({
-    position: { ...INITIAL_NAV_POSITION },
-    forward: { x: 0, y: 0, z: -1 },
-    right: { x: 1, y: 0, z: 0 },
-  });
-  const [wallReferences, setWallReferences] = useState<WallReference[]>([]);
-  const [wallReferenceError, setWallReferenceError] = useState<string | null>(
-    null,
-  );
 
   const accelConfig = useMemo(
     () => ({
@@ -95,18 +76,7 @@ export default function App() {
     [rawDeadband, stepDebounceMs, stepThreshold],
   );
 
-  const {
-    state: gyroState,
-    orientationRef,
-    headingRef,
-    motionRef,
-    requestPermission: requestGyroPermission,
-  } = useGyroscope();
-  const {
-    state: compassState,
-    headingRef: compassHeadingRef,
-    requestPermission: requestCompassPermission,
-  } = useCompass();
+  const { state: gyroState, orientationRef, headingRef, motionRef, requestPermission } = useGyroscope();
   const {
     state: accelState,
     sample: accelSample,
@@ -116,16 +86,11 @@ export default function App() {
     reset: resetAcceleration,
   } = useAcceleration(accelConfig);
   const gyroActive = gyroState === 'granted';
-  const compassActive = compassState === 'granted';
   const cameraActive = moveMode === 'buttons' || (gyroActive && moveMode !== 'off');
 
   const requestSensorPermission = async () => {
-    // Request all sensor services from the same user gesture for mobile browsers.
-    await Promise.all([
-      requestGyroPermission(),
-      requestCompassPermission(),
-      requestAccelPermission(),
-    ]);
+    // Both listeners are requested from the same user gesture for mobile browsers.
+    await Promise.all([requestPermission(), requestAccelPermission()]);
   };
 
   useEffect(() => {
@@ -137,54 +102,6 @@ export default function App() {
     setJoystick({ x: 0, y: 0 });
     setVerticalAxis(0);
   }, [moveMode]);
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadWallReferences = async () => {
-      try {
-        const response = await fetch(
-          `${import.meta.env.BASE_URL}wall_references.json`,
-        );
-        if (!response.ok) {
-          throw new Error(
-            `Wall catalog request failed with HTTP ${response.status}.`,
-          );
-        }
-        const catalog = parseWallReferenceCatalog(await response.json());
-        const expectedModel = MODEL_PATH.split('/').pop();
-        if (catalog.source_model !== expectedModel) {
-          throw new Error(
-            `Wall catalog belongs to ${catalog.source_model}, expected ${expectedModel}.`,
-          );
-        }
-        if (!cancelled) {
-          setWallReferences(catalog.walls);
-          setWallReferenceError(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setWallReferences([]);
-          setWallReferenceError(
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-      }
-    };
-
-    void loadWallReferences();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!navigation.initialPosition) return;
-    cameraPoseRef.current.position = {
-      x: navigation.initialPosition.x,
-      y: navigation.initialPosition.y,
-      z: navigation.initialPosition.z,
-    };
-  }, [navigation.initialPosition]);
 
   const format = (value: number) => value.toFixed(3);
   const togglePanel = (panel: Exclude<PanelId, null>) => {
@@ -207,61 +124,9 @@ export default function App() {
     headingDegrees,
   };
 
-  const applyCvHorizonCorrection = ({
-    cameraRollDeg,
-    confidence,
-  }: {
-    cameraRollDeg: number;
-    confidence: number;
-  }) => {
-    if (!gyroActive) return;
-    if (!Number.isFinite(cameraRollDeg) || !Number.isFinite(confidence)) return;
-    if (confidence < CV_ROLL_MIN_CONFIDENCE) return;
-
-    const screenAngleDeg = window.screen.orientation?.angle ?? 0;
-    if (Math.abs(screenAngleDeg) % 180 === 90) return;
-
-    const rawRollDeg = orientationRef.current?.gamma;
-    if (typeof rawRollDeg !== 'number' || !Number.isFinite(rawRollDeg)) return;
-
-    const targetOffsetDeg = calculateRollBiasDeg(rawRollDeg, cameraRollDeg);
-    if (Math.abs(targetOffsetDeg) > CV_ROLL_MAX_BIAS_DEG) return;
-
-    const residualDeg = targetOffsetDeg - horizonOffsetDeg;
-    if (Math.abs(residualDeg) < CV_ROLL_MIN_RESIDUAL_DEG) return;
-
-    const now = Date.now();
-    if (now - lastCvHorizonAppliedAtRef.current < CV_ROLL_COOLDOWN_MS) {
-      return;
-    }
-
-    const weightedStepDeg = Math.max(
-      -CV_ROLL_MAX_APPLY_STEP_DEG,
-      Math.min(CV_ROLL_MAX_APPLY_STEP_DEG, residualDeg * confidence),
-    );
-    setHorizonOffsetDeg((previous) => Math.max(
-      -CV_ROLL_MAX_BIAS_DEG,
-      Math.min(CV_ROLL_MAX_BIAS_DEG, previous + weightedStepDeg),
-    ));
-    lastCvHorizonAppliedAtRef.current = now;
-  };
-
   return (
     <div className="app-shell">
-      <CameraPermissionPanel
-        isOpen={openPanel === 'camera'}
-        onClose={() => setOpenPanel(null)}
-        orientationRef={orientationRef}
-        orientationActive={gyroActive}
-        onHorizonCorrectionResolved={applyCvHorizonCorrection}
-        modelFrame={modelFrame}
-        cameraPoseRef={cameraPoseRef}
-        wallReferences={wallReferences}
-        wallReferenceError={wallReferenceError}
-        modelVisible={modelVisible}
-        onModelVisibilityChange={setModelVisible}
-      />
-
+      <CameraPermissionPanel isOpen={openPanel === 'camera'} onClose={() => setOpenPanel(null)} />
 
       <div className="control-dock">
         <button
@@ -316,12 +181,8 @@ export default function App() {
 
       <CompassWidget
         headingRef={headingRef}
-        compassHeadingRef={compassHeadingRef}
         orientationRef={orientationRef}
-        enabled={compassActive}
-        horizonOffsetDeg={horizonOffsetDeg}
-        onCalibrateHorizon={(currentRollDeg) => setHorizonOffsetDeg(currentRollDeg)}
-        onResetHorizon={() => setHorizonOffsetDeg(0)}
+        enabled={gyroActive}
         activeRoute={navigation.activeRoute}
         currentPointId={navigation.currentPointId}
         isOpen={openPanel === 'compass'}
@@ -359,9 +220,9 @@ export default function App() {
               type="button"
               className="gyro-panel__btn"
               onClick={requestSensorPermission}
-                disabled={gyroState === 'requesting' || compassState === 'requesting'}
+              disabled={gyroState === 'requesting'}
             >
-                {(gyroState === 'requesting' || compassState === 'requesting') ? 'Requesting…' : 'Enable Sensors (Gyro + Compass + Motion)'}
+              {gyroState === 'requesting' ? 'Requesting…' : 'Enable Gyro'}
             </button>
           </div>
 
@@ -435,17 +296,9 @@ export default function App() {
             {gyroState === 'idle' && 'Gyroscope not active.'}
             {gyroState === 'requesting' && 'Waiting for permission…'}
             {gyroState === 'granted' && 'Gyroscope active.'}
-            {gyroState === 'denied' && 'Permission denied. Allow motion/orientation sensors in browser settings.'}
+            {gyroState === 'denied' && 'Permission denied. Allow motion sensors in browser settings.'}
             {gyroState === 'insecure' && 'Gyroscope requires HTTPS or localhost. Open the app from a secure origin.'}
             {gyroState === 'unsupported' && 'DeviceOrientationEvent not supported on this device.'}
-          </p>
-          <p className="gyro-panel__status" data-state={compassState}>
-            {compassState === 'idle' && 'Compass not active.'}
-            {compassState === 'requesting' && 'Compass permission pending…'}
-            {compassState === 'granted' && 'Compass active (north from real compass data when available).'}
-            {compassState === 'denied' && 'Compass denied. Browser may allow only relative gyro data.'}
-            {compassState === 'insecure' && 'Compass requires HTTPS or localhost.'}
-            {compassState === 'unsupported' && 'Compass data unavailable in this browser/device.'}
           </p>
         </div>
       )}
@@ -620,14 +473,12 @@ export default function App() {
         <ambientLight intensity={0.6} />
         <directionalLight castShadow position={[8, 12, 8]} intensity={1.2} />
 
-        {modelVisible && (
-          <ModelScene
-            modelPath={MODEL_PATH}
-            enableModel
-            position={MODEL_SCENE_POSITION}
-            onModelFrame={setModelFrame}
-          />
-        )}
+        <ModelScene
+          modelPath={MODEL_PATH}
+          enableModel
+          position={MODEL_SCENE_POSITION}
+          onModelFrame={setModelFrame}
+        />
 
         <NavigationTracker
           initialPosition={navigation.initialPosition}
@@ -657,9 +508,7 @@ export default function App() {
           stepStrideMeters={stepStrideMeters}
           verticalAxis={verticalAxis}
           debugVerticalEnabled={debugVerticalEnabled}
-          horizonOffsetDeg={horizonOffsetDeg}
           sensitivity={1}
-          onPoseChange={(pose) => { cameraPoseRef.current = pose; }}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}

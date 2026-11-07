@@ -12,9 +12,9 @@ import {
   type ModelSceneFrame,
 } from './navigationData';
 import { buildNavigationGraph, findShortestPath, getNavigationGraphStats, type NavigationPath } from './graph';
-import { getValidDestinations, NAVIGABLE_DESTINATIONS, type NavigableDestination } from './destinations';
+import { getValidDestinations, type NavigableDestination } from './destinations';
 
-const ENTRANCE_POINT_ID = 'Entrance';
+const ENTRANCE_LOCATION_NAME = 'Entrance';
 
 export type PlayerNavigationDebug = {
   playerPosition: { x: number; y: number; z: number };
@@ -102,23 +102,20 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
           );
         }
 
-        const namedDestinations = getValidDestinations(loadedNavigation.points);
+        const namedDestinations = getValidDestinations(loadedNavigation.points, loadedNavigation.namedLocations);
         navigationLogger.info(
           'NavigationDestinations',
-          ['[NAVIGATION] Named Destinations', ...namedDestinations.map((destination) => `  ${destination.id}`)].join('\n'),
+          [
+            '[NAVIGATION] Named Destinations',
+            ...namedDestinations.map((destination) => `  ${destination.name} -> ${destination.id}`),
+          ].join('\n'),
         );
-        const missingDestinations = NAVIGABLE_DESTINATIONS.filter(
-          (destination) => !namedDestinations.some((valid) => valid.id === destination.id),
-        );
-        if (missingDestinations.length > 0) {
-          navigationLogger.error(
-            'NavigationDestinations',
-            `[NAVIGATION] Configured destinations missing from JSON: ${missingDestinations.map((destination) => destination.id).join(', ')}`,
-          );
-        }
 
-        if (!loadedNavigation.points.some((point) => point.id === ENTRANCE_POINT_ID)) {
-          const message = `Navigation data does not contain a point with ID "${ENTRANCE_POINT_ID}".`;
+        const entrancePointId = loadedNavigation.namedLocations?.[ENTRANCE_LOCATION_NAME];
+        console.log('[SPAWN DEBUG] Entrance ID from namedLocations:', entrancePointId);
+        if (!entrancePointId || !loadedNavigation.points.some((point) => point.id === entrancePointId)) {
+          const message = `Entrance point "${String(entrancePointId)}" from namedLocations.${ENTRANCE_LOCATION_NAME} was not found in points[].`;
+          console.error('[SPAWN DEBUG]', message);
           setLoadError(message);
           navigationLogger.error('NavigationLoadError', message);
         }
@@ -145,12 +142,13 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
   );
   const worldPointsRef = useRef(worldPoints);
   const availableDestinations = useMemo<NavigableDestination[]>(
-    () => navigation ? getValidDestinations(navigation.points) : [],
+    () => navigation ? getValidDestinations(navigation.points, navigation.namedLocations) : [],
     [navigation],
   );
+  const entrancePointId = navigation?.namedLocations?.[ENTRANCE_LOCATION_NAME] ?? null;
   const entrancePoint = useMemo(
-    () => navigation?.points.find((point) => point.id === ENTRANCE_POINT_ID) ?? null,
-    [navigation],
+    () => navigation?.points.find((point) => point.id === entrancePointId) ?? null,
+    [entrancePointId, navigation],
   );
   const initialPosition = useMemo(
     () => entrancePoint && modelFrame
@@ -163,8 +161,10 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
   useEffect(() => {
     if (initialPointAppliedRef.current || !entrancePoint || !initialPosition || !modelFrame) return;
     initialPointAppliedRef.current = true;
-    currentPointIdRef.current = ENTRANCE_POINT_ID;
-    setCurrentPointId(ENTRANCE_POINT_ID);
+    currentPointIdRef.current = entrancePointId;
+    setCurrentPointId(entrancePointId);
+    console.log('[SPAWN DEBUG] Entrance JSON coordinates:', { id: entrancePoint.id, x: entrancePoint.x, y: entrancePoint.y });
+    console.log('[SPAWN DEBUG] Converted Three.js coordinates:', initialPosition.toArray());
     // Player initial position is set to the same converted value NavigationTracker will apply to the camera.
     const distanceMeters = 0;
     navigationLogger.info(
@@ -176,9 +176,8 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
         `  X = ${entrancePoint.x.toFixed(4)}`,
         `  Y = ${entrancePoint.y.toFixed(4)}`,
         '',
-        'Rotation Correction:',
-        '  Angle = 305.00 deg',
-        '  Direction = counter-clockwise (standard rotation of JSON x,y around the origin)',
+        'Coordinate Mapping:',
+        '  Three.js X = JSON X, Three.js Z = -JSON Y (no rotation)',
         '',
         'Converted Three.js Entrance:',
         `  X = ${initialPosition.x.toFixed(4)}`,
@@ -193,7 +192,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
         `Distance (converted Entrance <-> player initial position): ${distanceMeters.toFixed(4)} m`,
       ].join('\n'),
     );
-  }, [entrancePoint, initialPosition, modelFrame]);
+  }, [entrancePoint, entrancePointId, initialPosition, modelFrame]);
 
   useEffect(() => {
     worldPointsRef.current = worldPoints;
@@ -295,7 +294,10 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       const route = routeRef.current;
       if (route && detection.currentPointId) {
         if (detection.currentPointId === route.destination) {
-          setRouteMessage(`You have arrived at ${route.destination}.`);
+          const destinationName = availableDestinations.find(
+            (destination) => destination.id === route.destination,
+          )?.name ?? 'your destination';
+          setRouteMessage(`You have arrived at ${destinationName}.`);
           setDestinationId(null);
           setRoute(null);
           navigationLogger.info('NavigationArrival', `[NAVIGATION] Destination reached: ${route.destination}`);
@@ -386,7 +388,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
         detectionRadiusMeters: NAVIGATION_POINT_RADIUS_M,
       });
     }
-  }, [routeMessage, setRoute, worldPoints]);
+  }, [availableDestinations, routeMessage, setRoute, worldPoints]);
 
   return {
     buildingName: navigation?.building ?? null,

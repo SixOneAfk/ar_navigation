@@ -92,7 +92,9 @@ export function NavigationStatus({
         ) : <h2>Navigation</h2>}
         {buildingName && <span>{buildingName}</span>}
       </div>
-      <div>Current location: <strong>{currentPointId ?? '—'}</strong></div>
+      <div>Current location: <strong>{currentPointId
+        ? availableDestinations.find((destination) => destination.id === currentPointId)?.name ?? 'On route'
+        : '—'}</strong></div>
       {onNavigate && (
         <div className="navigation-status__route-control">
           <label htmlFor="navigation-destination">Destination</label>
@@ -156,7 +158,7 @@ export function NavigationStatus({
               </>
             );
           })()}
-          <div>To: <strong>{availableDestinations.find((destination) => destination.id === activeRoute.destination)?.name ?? activeRoute.destination}</strong></div>
+          <div>To: <strong>{availableDestinations.find((destination) => destination.id === activeRoute.destination)?.name ?? 'Destination'}</strong></div>
           <div>Distance: <strong>{activeRoute.distanceMeters.toFixed(2)} m</strong></div>
           <ol>
             {activeRoute.instructions.map((instruction, index) => (
@@ -165,7 +167,7 @@ export function NavigationStatus({
                 Walk {instruction.distanceMeters.toFixed(1)} m forward
               </li>
             ))}
-            <li>Arrive at {availableDestinations.find((destination) => destination.id === activeRoute.destination)?.name ?? activeRoute.destination}</li>
+            <li>Arrive at {availableDestinations.find((destination) => destination.id === activeRoute.destination)?.name ?? 'your destination'}</li>
           </ol>
           {debugEnabled && <div className="navigation-status__raw-route">Raw Dijkstra path: {activeRoute.points.join(' → ')}</div>}
         </div>

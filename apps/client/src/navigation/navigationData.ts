@@ -19,6 +19,7 @@ export type NavigationBranch = {
 
 export type BuildingNavigation = {
   building?: string;
+  namedLocations?: Record<string, string>;
   grid: {
     cell_size: number;
     margin?: number;
@@ -112,11 +113,23 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
   }
 
   if (!isRecord(value)) throw new Error('Navigation data must be a JSON object.');
-  if (value.building !== undefined && (typeof value.building !== 'string' || value.building.length === 0)) {
+  const metadata = isRecord(value.metadata) ? value.metadata : undefined;
+  const building = value.building ?? metadata?.building;
+  if (building !== undefined && (typeof building !== 'string' || building.length === 0)) {
     throw new Error('Navigation data building name must be a non-empty string when provided.');
   }
 
-  const grid = value.grid;
+  const grid = value.grid ?? (metadata ? {
+    cell_size: metadata.inner_grid_size ?? 1,
+    margin: metadata.outer_grid_margin,
+    wall_clearance: metadata.node_wall_clearance,
+    diagonal_connections: false,
+    coordinate_system: {
+      type: metadata.coordinate_system,
+      x: metadata.positive_x ?? 'Blender world X',
+      y: metadata.positive_y ?? 'Blender world Y',
+    },
+  } : undefined);
   if (!isRecord(grid)) throw new Error('Navigation data is missing grid configuration.');
   const cellSize = requireFiniteNumber(grid.cell_size ?? grid.size, 'grid.cell_size or grid.size');
   const margin = grid.margin === undefined ? undefined : requireFiniteNumber(grid.margin, 'grid.margin');
@@ -157,8 +170,12 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
     if (ids.has(pointValue.id)) throw new Error(`Duplicate navigation point ID: ${pointValue.id}.`);
     ids.add(pointValue.id);
 
-    const row = pointValue.row === undefined ? undefined : requireFiniteNumber(pointValue.row, `${label}.row`);
-    const column = pointValue.column === undefined ? undefined : requireFiniteNumber(pointValue.column, `${label}.column`);
+    const row = pointValue.row === undefined || pointValue.row === null
+      ? undefined
+      : requireFiniteNumber(pointValue.row, `${label}.row`);
+    const column = pointValue.column === undefined || pointValue.column === null
+      ? undefined
+      : requireFiniteNumber(pointValue.column, `${label}.column`);
     if ((row !== undefined && !Number.isInteger(row)) || (column !== undefined && !Number.isInteger(column))) {
       throw new Error(`${label}.row and ${label}.column must be integers when provided.`);
     }
@@ -171,6 +188,21 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
       y: requireFiniteNumber(pointValue.y, `${label}.y`),
     };
   });
+
+  const namedLocationsValue = value.namedLocations ?? {};
+  if (!isRecord(namedLocationsValue)) {
+    throw new Error('Navigation data namedLocations must be an object.');
+  }
+  const namedLocations: Record<string, string> = {};
+  for (const [name, pointId] of Object.entries(namedLocationsValue)) {
+    if (!name.trim() || typeof pointId !== 'string' || pointId.length === 0) {
+      throw new Error('Navigation namedLocations must map non-empty names to non-empty point IDs.');
+    }
+    if (!ids.has(pointId)) {
+      throw new Error(`Navigation named location "${name}" references nonexistent point "${pointId}".`);
+    }
+    namedLocations[name] = pointId;
+  }
 
   const branchesValue = value.branches;
   const branches: NavigationBranch[] = [];
@@ -199,7 +231,8 @@ export function parseBuildingNavigation(jsonText: string): BuildingNavigation {
   }
 
   return {
-    ...(typeof value.building === 'string' ? { building: value.building } : {}),
+    ...(typeof building === 'string' ? { building } : {}),
+    namedLocations,
     grid: {
       cell_size: cellSize,
       ...(margin === undefined ? {} : { margin }),
@@ -224,18 +257,9 @@ export function navigationPointToThreePosition(
   modelFrame: ModelSceneFrame,
   cameraHeight: number,
 ): THREE.Vector3 {
-  // Measured alignment between building_navigation.json's raw blender_vertex_local coordinates and
-  // the GLB's baked mesh data: cross-referencing all 8362 branches[] against their matching GLB mesh
-  // nodes (same IDs, e.g. "B0") shows a 305.00 deg rotation plus this translation aligns every branch
-  // to within ~1.3mm RMS across the ~98m building footprint. Not a guess/offset-to-fit; both constants
-  // were solved from real GLB geometry (apps/client/public/Floor 1_Rotated_Points.glb).
-  const rotationRadians = THREE.MathUtils.degToRad(305.0);
-  const cos = Math.cos(rotationRadians);
-  const sin = Math.sin(rotationRadians);
-  const rotatedX = point.x * cos - point.y * sin;
-  const rotatedY = point.x * sin + point.y * cos;
-  const alignedX = rotatedX + 34.461503;
-  const alignedZ = -rotatedY + -13.598112;
+  // The JSON and GLB share the Blender world frame: Three.js X = JSON X, Z = -JSON Y.
+  const alignedX = point.x;
+  const alignedZ = -point.y;
 
   // ModelScene recenters X/Z, anchors the floor at Y=0, and applies its existing group position.
   return new THREE.Vector3(
