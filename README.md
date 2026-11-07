@@ -40,6 +40,21 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 The client loads the active building model from `apps/client/public/Floor 1__full_GRAPH_no_fence.glb`.
 
+## Client Navigation
+
+The client uses A* over the points and bidirectional cardinal branches in
+`apps/client/public/building_navigation.json`. Branch distances determine route
+costs; the Euclidean heuristic is scaled to remain admissible for those weights.
+The player's nearest tracked graph point is the route start, including when the
+player is between points. An Entrance, if configured, is used as the default
+spawn but is not required for routing. Disconnected destinations report an error.
+The standalone `backend/graph_router.py` route API uses the same weighted A*
+and cardinal-branch rules.
+
+Add a destination by mapping its name to an existing point ID in `namedLocations`.
+The selector derives its labels and destinations from this mapping; underscores
+in names are displayed as spaces.
+
 ## Main API Endpoints
 
 - Gateway telemetry ingest: `POST /api/v1/position/telemetry`

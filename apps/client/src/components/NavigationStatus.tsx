@@ -7,6 +7,7 @@ import type { NavigationPoint } from '../navigation/navigationData';
 type NavigationStatusProps = {
   buildingName: string | null;
   currentPointId: string | null;
+  routingPointId?: string | null;
   debugSnapshot: PlayerNavigationDebug | null;
   debugEnabled: boolean;
   loadError: string | null;
@@ -49,6 +50,7 @@ function relativeWalkInstruction(direction: CardinalDirection, distanceMeters: n
 export function NavigationStatus({
   buildingName,
   currentPointId,
+  routingPointId = currentPointId,
   debugSnapshot,
   debugEnabled,
   loadError,
@@ -102,17 +104,17 @@ export function NavigationStatus({
             id="navigation-destination"
             value={selectedDestinationId}
             onChange={(event) => setSelectedDestinationId(event.target.value)}
-            disabled={!currentPointId || availableDestinations.length === 0}
+            disabled={!routingPointId || availableDestinations.length === 0}
           >
             <option value="">Select a destination</option>
-            {availableDestinations.filter((destination) => destination.id !== currentPointId).map((destination) => (
-              <option key={destination.id} value={destination.id}>{destination.name}</option>
+            {availableDestinations.map((destination) => (
+              <option key={`${destination.name}-${destination.id}`} value={destination.id}>{destination.name}</option>
             ))}
           </select>
           <button
             type="button"
             onClick={() => selectedDestinationId && onNavigate(selectedDestinationId)}
-            disabled={!selectedDestinationId || !currentPointId}
+            disabled={!selectedDestinationId || !routingPointId}
           >
             Navigate
           </button>
@@ -169,7 +171,7 @@ export function NavigationStatus({
             ))}
             <li>Arrive at {availableDestinations.find((destination) => destination.id === activeRoute.destination)?.name ?? 'your destination'}</li>
           </ol>
-          {debugEnabled && <div className="navigation-status__raw-route">Raw Dijkstra path: {activeRoute.points.join(' → ')}</div>}
+          {debugEnabled && <div className="navigation-status__raw-route">Raw A* path: {activeRoute.points.join(' → ')}</div>}
         </div>
       )}
       {loadError && <p className="navigation-status__warning">{loadError}</p>}

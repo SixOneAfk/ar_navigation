@@ -110,6 +110,7 @@ export default function App() {
   const navigationStatusProps = {
     buildingName: navigation.buildingName,
     currentPointId: navigation.currentPointId,
+    routingPointId: navigation.routingPointId,
     debugSnapshot: navigation.debugSnapshot,
     debugEnabled: navigation.debugEnabled,
     loadError: navigation.loadError,

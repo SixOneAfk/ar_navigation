@@ -4,9 +4,11 @@ import networkx as nx
 from pathlib import Path
 from typing import List, Dict
 import json
+import logging
 import math
 
 app = FastAPI(title="Nav_Ar Building Graph Router", version="1.0.0")
+logger = logging.getLogger(__name__)
 NAVIGATION_JSON_PATH = Path(__file__).resolve().parents[1] / "apps" / "client" / "public" / "building_navigation.json"
 
 
@@ -60,7 +62,25 @@ def load_navigation_graph() -> nx.Graph:
         distance = branch.get("distance")
         if not isinstance(distance, (int, float)) or not math.isfinite(distance) or distance <= 0:
             raise RuntimeError(f"branches[{index}].distance must be a finite positive number.")
-        graph.add_edge(branch["from"], branch["to"], weight=distance, branch_id=branch["id"])
+        from_node = graph.nodes[branch["from"]]
+        to_node = graph.nodes[branch["to"]]
+        dx = to_node["x"] - from_node["x"]
+        dy = to_node["y"] - from_node["y"]
+        if abs(dx) > 1e-5 and abs(dy) > 1e-5:
+            logger.warning("Ignoring diagonal branch %s: %s -> %s", branch["id"], branch["from"], branch["to"])
+            continue
+        existing = graph.get_edge_data(branch["from"], branch["to"])
+        if existing is None or distance < existing["weight"]:
+            graph.add_edge(branch["from"], branch["to"], weight=distance, branch_id=branch["id"])
+
+    scale = math.inf
+    for source, target, edge in graph.edges(data=True):
+        source_point = graph.nodes[source]
+        target_point = graph.nodes[target]
+        distance = math.hypot(target_point["x"] - source_point["x"], target_point["y"] - source_point["y"])
+        if distance > 0:
+            scale = min(scale, edge["weight"] / distance)
+    graph.graph["heuristic_scale"] = scale if math.isfinite(scale) else 0
 
     return graph
 
@@ -88,7 +108,11 @@ def compute_route(request: PathRequest):
         )
     
     try:
-        path = nx.shortest_path(graph, request.start_node, request.target_node, weight="weight", method="dijkstra")
+        def heuristic(source: str, target: str) -> float:
+            a, b = graph.nodes[source], graph.nodes[target]
+            return graph.graph["heuristic_scale"] * math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+
+        path = nx.astar_path(graph, request.start_node, request.target_node, heuristic=heuristic, weight="weight")
         total_dist = nx.path_weight(graph, path, weight="weight")
         nodes_detail = [{"id": n, **graph.nodes[n]} for n in path]
         

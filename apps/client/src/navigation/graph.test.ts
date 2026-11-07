@@ -46,6 +46,31 @@ describe('navigation graph', () => {
     expect(route.distanceMeters).toBe(3);
   });
 
+  it('keeps the Euclidean heuristic admissible for discounted branch weights', () => {
+    const graph = buildNavigationGraph(fixture([
+      point('A', 0, 0, 0, 0), point('B', 0, 1, 1, 0),
+      point('C', 1, 0, 0, 10), point('D', 1, 1, 1, 10),
+    ], false, [
+      branch('A', 'B', 5), branch('A', 'C', 0.1),
+      branch('C', 'D', 0.1), branch('D', 'B', 0.1),
+    ]));
+    const route = findShortestPath(graph, 'A', 'B');
+    expect(route.points).toEqual(['A', 'C', 'D', 'B']);
+    expect(route.distanceMeters).toBeCloseTo(0.3);
+  });
+
+  it('reports the weights of the selected branches when parallel edges exist', () => {
+    const graph = buildNavigationGraph(fixture(
+      [point('A', 0, 0), point('B', 0, 1)],
+      false,
+      [branch('A', 'B', 5), branch('A', 'B', 1)],
+    ));
+    const route = findShortestPath(graph, 'A', 'B');
+    expect(route.distanceMeters).toBe(1);
+    expect(route.directions[0].distanceMeters).toBe(1);
+    expect(route.instructions[0].distanceMeters).toBe(1);
+  });
+
   it('uses cardinal edges even when the JSON enables diagonal movement', () => {
     const graph = buildNavigationGraph(fixture([
       point('A', 0, 0), point('side-row', 0, 1), point('side-column', 1, 0), point('B', 1, 1),

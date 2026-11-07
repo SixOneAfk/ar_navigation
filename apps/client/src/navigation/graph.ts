@@ -164,42 +164,61 @@ export function findShortestPath(graph: NavigationGraph, start: string, destinat
   if (!graph.has(start)) throw new Error(`Navigation point not found: ${start}`);
   if (!graph.has(destination)) throw new Error(`Navigation point not found: ${destination}`);
 
+  const destinationPoint = graph.get(destination)!.point;
+  let heuristicScale = Number.POSITIVE_INFINITY;
+  for (const node of graph.values()) {
+    for (const edge of node.edges) {
+      const neighbor = graph.get(edge.to);
+      if (!neighbor) continue;
+      const distance = Math.hypot(neighbor.point.x - node.point.x, neighbor.point.y - node.point.y);
+      if (distance > 0) heuristicScale = Math.min(heuristicScale, edge.distanceMeters / distance);
+    }
+  }
+  if (!Number.isFinite(heuristicScale)) heuristicScale = 0;
+  const heuristic = (id: string) => {
+    const point = graph.get(id)!.point;
+    return heuristicScale * Math.hypot(point.x - destinationPoint.x, point.y - destinationPoint.y);
+  };
+
   const distances = new Map<string, number>([[start, 0]]);
-  const previous = new Map<string, string>();
-  const queue = new MinHeap<string>();
-  queue.push(start, 0);
+  const previous = new Map<string, NavigationEdge>();
+  const queue = new MinHeap<{ id: string; distance: number }>();
+  queue.push({ id: start, distance: 0 }, heuristic(start));
 
   while (queue.size > 0) {
-    const current = queue.pop();
-    if (!current) break;
-    const currentDistance = distances.get(current);
-    if (currentDistance === undefined) continue;
+    const entry = queue.pop();
+    if (!entry) break;
+    const { id: current, distance: currentDistance } = entry;
+    if (currentDistance !== distances.get(current)) continue;
     if (current === destination) break;
 
     for (const edge of graph.get(current)?.edges ?? []) {
       const nextDistance = currentDistance + edge.distanceMeters;
       if (nextDistance >= (distances.get(edge.to) ?? Number.POSITIVE_INFINITY)) continue;
       distances.set(edge.to, nextDistance);
-      previous.set(edge.to, current);
-      queue.push(edge.to, nextDistance);
+      previous.set(edge.to, edge);
+      queue.push({ id: edge.to, distance: nextDistance }, nextDistance + heuristic(edge.to));
     }
   }
 
   const distanceMeters = distances.get(destination);
   if (distanceMeters === undefined) throw new Error(`No route exists between ${start} and ${destination}.`);
 
-  const points = [destination];
-  while (points[0] !== start) {
-    const prior = previous.get(points[0]);
+  const edges: NavigationEdge[] = [];
+  let current = destination;
+  while (current !== start) {
+    const prior = previous.get(current);
     if (!prior) throw new Error(`No route exists between ${start} and ${destination}.`);
-    points.unshift(prior);
+    edges.push(prior);
+    current = prior.from;
   }
+  edges.reverse();
+  const points = [start, ...edges.map((edge) => edge.to)];
 
-  const directions: NavigationDirection[] = points.slice(0, -1).map((pointId, index) => {
-    const from = graph.get(pointId)?.point;
-    const to = graph.get(points[index + 1])?.point;
-    const edge = graph.get(pointId)?.edges.find((candidate) => candidate.to === points[index + 1]);
-    if (!from || !to || !edge) throw new Error('Route contains an unknown navigation edge.');
+  const directions: NavigationDirection[] = edges.map((edge) => {
+    const from = graph.get(edge.from)?.point;
+    const to = graph.get(edge.to)?.point;
+    if (!from || !to) throw new Error('Route contains an unknown navigation edge.');
     return {
       from: from.id,
       to: to.id,

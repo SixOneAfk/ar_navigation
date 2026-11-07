@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import * as THREE from 'three';
 import { useNavigation } from './useNavigation';
 import {
   navigationPointToThreePosition,
@@ -10,7 +11,7 @@ import {
 } from './navigationData';
 import navigationJson from '../../public/building_navigation.json?raw';
 
-// Exercises the real hook end-to-end (JSON fetch -> parse -> graph -> Dijkstra)
+// Exercises the real hook end-to-end (JSON fetch -> parse -> graph -> A*)
 // instead of re-implementing its logic, so wiring regressions are caught here.
 
 const modelFrame: ModelSceneFrame = {
@@ -48,7 +49,9 @@ describe('useNavigation (real JSON wiring)', () => {
     const { result } = renderHook(() => useNavigation(modelFrame, CAMERA_HEIGHT));
 
     await waitFor(() => expect(result.current.loadError).toBeNull());
-    await waitFor(() => expect(result.current.currentPointId).toBe('x5y52'));
+    await waitFor(() => expect(result.current.initialPosition).not.toBeNull());
+    act(() => result.current.observePlayerPosition(result.current.initialPosition!));
+    expect(result.current.currentPointId).toBe('x5y52');
 
     expect(result.current.availableDestinations).toEqual([
       { id: 'x5y52', name: 'Entrance' },
@@ -64,7 +67,8 @@ describe('useNavigation (real JSON wiring)', () => {
   it('routes the mapped Entrance to Student Department using branches[]', async () => {
     stubFetchWithRealNavigationJson();
     const { result } = renderHook(() => useNavigation(modelFrame, CAMERA_HEIGHT));
-    await waitFor(() => expect(result.current.currentPointId).toBe('x5y52'));
+    await waitFor(() => expect(result.current.initialPosition).not.toBeNull());
+    act(() => result.current.observePlayerPosition(result.current.initialPosition!));
 
     act(() => {
       result.current.navigateTo('x31y35');
@@ -86,7 +90,7 @@ describe('useNavigation (real JSON wiring)', () => {
     const studentDepWorldPosition = navigationPointToThreePosition(studentDep, modelFrame, CAMERA_HEIGHT);
 
     const { result } = renderHook(() => useNavigation(modelFrame, CAMERA_HEIGHT));
-    await waitFor(() => expect(result.current.currentPointId).toBe('x5y52'));
+    await waitFor(() => expect(result.current.initialPosition).not.toBeNull());
 
     act(() => {
       result.current.observePlayerPosition(studentDepWorldPosition);
@@ -102,5 +106,51 @@ describe('useNavigation (real JSON wiring)', () => {
     expect(result.current.activeRoute?.destination).toBe('x5y52');
     expect(result.current.activeRoute?.points[0]).toBe('x31y35');
     expect(result.current.activeRoute?.points[result.current.activeRoute.points.length - 1]).toBe('x5y52');
+  });
+
+  it('uses the nearest tracked node without an Entrance and exposes newly named locations', async () => {
+    const data = {
+      metadata: { building: 'Test', coordinate_system: 'XY' },
+      namedLocations: { Library: 'B', Cafeteria: 'C', Isolated_Room: 'D' },
+      points: [
+        { id: 'A', x: 0, y: 0 }, { id: 'B', x: 10, y: 0 },
+        { id: 'C', x: 20, y: 0 }, { id: 'D', x: 100, y: 0 },
+        { id: 'E', x: 0.5, y: 0 },
+      ],
+      branches: [
+        { id: 'AB', from: 'A', to: 'B', distance: 10 },
+        { id: 'BC', from: 'B', to: 'C', distance: 10 },
+        { id: 'AE', from: 'A', to: 'E', distance: 0.5 },
+      ],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, text: async () => JSON.stringify(data),
+    })));
+    const { result } = renderHook(() => useNavigation(modelFrame, CAMERA_HEIGHT));
+    await waitFor(() => expect(result.current.availableDestinations).toHaveLength(3));
+    expect(result.current.loadError).toBeNull();
+    expect(result.current.initialPosition).toBeNull();
+    expect(result.current.availableDestinations).toEqual([
+      { id: 'B', name: 'Library' }, { id: 'C', name: 'Cafeteria' },
+      { id: 'D', name: 'Isolated Room' },
+    ]);
+
+    act(() => result.current.observePlayerPosition(new THREE.Vector3(7, CAMERA_HEIGHT, 0)));
+    expect(result.current.currentPointId).toBeNull();
+    expect(result.current.routingPointId).toBe('B');
+    act(() => result.current.navigateTo('C'));
+    expect(result.current.activeRoute?.points).toEqual(['B', 'C']);
+
+    act(() => result.current.observePlayerPosition(new THREE.Vector3(0.5, CAMERA_HEIGHT, 0)));
+    expect(result.current.currentPointId).toBe('E');
+    act(() => result.current.observePlayerPosition(new THREE.Vector3(0, CAMERA_HEIGHT, 0)));
+    expect(result.current.currentPointId).toBe('E');
+    expect(result.current.routingPointId).toBe('A');
+    act(() => result.current.navigateTo('B'));
+    expect(result.current.activeRoute?.points).toEqual(['A', 'B']);
+
+    act(() => result.current.navigateTo('D'));
+    expect(result.current.activeRoute).toBeNull();
+    expect(result.current.routeMessage).toContain('No route exists between A and D');
   });
 });
