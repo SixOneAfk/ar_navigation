@@ -26,6 +26,7 @@ export function NavigationTracker({
     if (initializedRef.current || !initialPosition) return;
     camera.position.copy(initialPosition);
     initializedRef.current = true;
+    console.log('[SPAWN DEBUG] Player position after initialization:', camera.position.toArray());
     logger.current.info(
       'NavigationTracker',
       [

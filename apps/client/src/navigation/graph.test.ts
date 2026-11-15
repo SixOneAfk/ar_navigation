@@ -46,6 +46,31 @@ describe('navigation graph', () => {
     expect(route.distanceMeters).toBe(3);
   });
 
+  it('keeps the Euclidean heuristic admissible for discounted branch weights', () => {
+    const graph = buildNavigationGraph(fixture([
+      point('A', 0, 0, 0, 0), point('B', 0, 1, 1, 0),
+      point('C', 1, 0, 0, 10), point('D', 1, 1, 1, 10),
+    ], false, [
+      branch('A', 'B', 5), branch('A', 'C', 0.1),
+      branch('C', 'D', 0.1), branch('D', 'B', 0.1),
+    ]));
+    const route = findShortestPath(graph, 'A', 'B');
+    expect(route.points).toEqual(['A', 'C', 'D', 'B']);
+    expect(route.distanceMeters).toBeCloseTo(0.3);
+  });
+
+  it('reports the weights of the selected branches when parallel edges exist', () => {
+    const graph = buildNavigationGraph(fixture(
+      [point('A', 0, 0), point('B', 0, 1)],
+      false,
+      [branch('A', 'B', 5), branch('A', 'B', 1)],
+    ));
+    const route = findShortestPath(graph, 'A', 'B');
+    expect(route.distanceMeters).toBe(1);
+    expect(route.directions[0].distanceMeters).toBe(1);
+    expect(route.instructions[0].distanceMeters).toBe(1);
+  });
+
   it('uses cardinal edges even when the JSON enables diagonal movement', () => {
     const graph = buildNavigationGraph(fixture([
       point('A', 0, 0), point('side-row', 0, 1), point('side-column', 1, 0), point('B', 1, 1),
@@ -124,11 +149,11 @@ describe('navigation graph', () => {
     const pointById = new Map(navigation.points.map((point) => [point.id, point]));
     const route = findShortestPath(graph, firstBranch.from, firstBranch.to);
 
-    expect(graph.size).toBe(123426);
-    expect(stats.branches).toBe(8362);
+    expect(graph.size).toBe(19666);
+    expect(stats.branches).toBe(33518);
     expect(stats.invalidBranches).toBe(0);
     expect(stats.diagonalBranchesExcluded).toBe(0);
-    expect(stats.graphEdges).toBe(8362);
+    expect(stats.graphEdges).toBe(33518);
     expect(route.distanceMeters).toBeGreaterThan(0);
     expect(route.directions.every((direction) => navigation.branches.some(
       (branch) => (branch.from === direction.from && branch.to === direction.to)
@@ -145,27 +170,31 @@ describe('navigation graph', () => {
     }
   });
 
-  it('routes Entrance to Student_Dep and back using only branches[] connections', () => {
+  it('routes mapped named locations in both directions using branches[] connections', () => {
     const navigation = parseBuildingNavigation(navigationJson);
-    expect(navigation.points.some((p) => p.id === 'Entrance')).toBe(true);
-    expect(navigation.points.some((p) => p.id === 'Student_Dep')).toBe(true);
+    const entranceId = navigation.namedLocations?.Entrance;
+    const studentDepartmentId = navigation.namedLocations?.Student_Dep;
+    expect(entranceId).toBe('x5y52');
+    expect(studentDepartmentId).toBe('x31y35');
+    expect(navigation.points.some((p) => p.id === entranceId)).toBe(true);
+    expect(navigation.points.some((p) => p.id === studentDepartmentId)).toBe(true);
 
     const graph = buildNavigationGraph(navigation);
     const isValidBranchEdge = (from: string, to: string) => navigation.branches.some(
       (branch) => (branch.from === from && branch.to === to) || (branch.from === to && branch.to === from),
     );
 
-    const toStudentDep = findShortestPath(graph, 'Entrance', 'Student_Dep');
-    expect(toStudentDep.points[0]).toBe('Entrance');
-    expect(toStudentDep.points[toStudentDep.points.length - 1]).toBe('Student_Dep');
+    const toStudentDep = findShortestPath(graph, entranceId!, studentDepartmentId!);
+    expect(toStudentDep.points[0]).toBe(entranceId);
+    expect(toStudentDep.points[toStudentDep.points.length - 1]).toBe(studentDepartmentId);
     expect(toStudentDep.points.length).toBeGreaterThan(2);
     for (let index = 0; index < toStudentDep.points.length - 1; index += 1) {
       expect(isValidBranchEdge(toStudentDep.points[index], toStudentDep.points[index + 1])).toBe(true);
     }
 
-    const toEntrance = findShortestPath(graph, 'Student_Dep', 'Entrance');
-    expect(toEntrance.points[0]).toBe('Student_Dep');
-    expect(toEntrance.points[toEntrance.points.length - 1]).toBe('Entrance');
+    const toEntrance = findShortestPath(graph, studentDepartmentId!, entranceId!);
+    expect(toEntrance.points[0]).toBe(studentDepartmentId);
+    expect(toEntrance.points[toEntrance.points.length - 1]).toBe(entranceId);
     for (let index = 0; index < toEntrance.points.length - 1; index += 1) {
       expect(isValidBranchEdge(toEntrance.points[index], toEntrance.points[index + 1])).toBe(true);
     }

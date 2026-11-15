@@ -41,9 +41,13 @@ const modelFrame: ModelSceneFrame = {
 
 describe('navigation data', () => {
   it('parses the documented structure and grid configuration', () => {
-    const navigation = parseBuildingNavigation(JSON.stringify(navigationFixture));
+    const navigation = parseBuildingNavigation(JSON.stringify({
+      ...navigationFixture,
+      namedLocations: { Entrance: 'test-node' },
+    }));
 
     expect(navigation.building).toBe('Test Building');
+    expect(navigation.namedLocations).toEqual({ Entrance: 'test-node' });
     expect(navigation.grid.cell_size).toBe(1);
     expect(navigation.grid.coordinate_system).toEqual({
       type: 'building_local',
@@ -52,6 +56,13 @@ describe('navigation data', () => {
       y: 'Building local Y',
     });
     expect(navigation.points).toHaveLength(1);
+  });
+
+  it('rejects named locations that do not reference an existing point', () => {
+    expect(() => parseBuildingNavigation(JSON.stringify({
+      ...navigationFixture,
+      namedLocations: { Library: 'missing-node' },
+    }))).toThrow('references nonexistent point "missing-node"');
   });
 
   it('ignores a leading exporter note without accepting malformed JSON', () => {
@@ -92,16 +103,16 @@ describe('navigation data', () => {
     }))).toThrow('Duplicate navigation branch ID: B0');
   });
 
-  it('rotates Blender vertex coordinates into the GLB baked orientation before centering', () => {
+  it('maps JSON X/Y to Three.js X/-Z before applying the model centering', () => {
     const position = navigationPointToThreePosition(
       navigationFixture.points[0],
       modelFrame,
       1.6,
     );
 
-    expect(position.x).toBeCloseTo(116.876169);
+    expect(position.x).toBeCloseTo(84.586);
     expect(position.y).toBe(1.1);
-    expect(position.z).toBeCloseTo(-29.435019);
+    expect(position.z).toBeCloseTo(-16.008);
   });
 
   it('uses horizontal distance and retains the current point while it remains in range', () => {

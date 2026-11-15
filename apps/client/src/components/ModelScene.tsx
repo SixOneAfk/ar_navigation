@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from 'react';
 import { Html, useGLTF } from '@react-three/drei';
-import type { GroupProps } from '@react-three/fiber';
+import { GroupProps } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { ModelSceneFrame } from '../navigation/navigationData';
 
@@ -181,7 +181,7 @@ function FloorFallback() {
             color: '#1f2a3d',
           }}
         >
-          Add public/Floor 1_Rotated_Points.glb to load the building model.
+          Add public/Floor 1__full_GRAPH_no_fence.glb to load the building model.
         </div>
       </Html>
     </group>

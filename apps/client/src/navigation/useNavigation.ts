@@ -12,9 +12,9 @@ import {
   type ModelSceneFrame,
 } from './navigationData';
 import { buildNavigationGraph, findShortestPath, getNavigationGraphStats, type NavigationPath } from './graph';
-import { getValidDestinations, NAVIGABLE_DESTINATIONS, type NavigableDestination } from './destinations';
+import { getValidDestinations, type NavigableDestination } from './destinations';
 
-const ENTRANCE_POINT_ID = 'Entrance';
+const ENTRANCE_LOCATION_NAME = 'Entrance';
 
 export type PlayerNavigationDebug = {
   playerPosition: { x: number; y: number; z: number };
@@ -45,6 +45,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
   const [navigation, setNavigation] = useState<BuildingNavigation | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPointId, setCurrentPointId] = useState<string | null>(null);
+  const [routingPointId, setRoutingPointId] = useState<string | null>(null);
   const [debugSnapshot, setDebugSnapshot] = useState<PlayerNavigationDebug | null>(null);
   const [destinationId, setDestinationId] = useState<string | null>(null);
   const [activeRoute, setActiveRoute] = useState<NavigationPath | null>(null);
@@ -102,26 +103,15 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
           );
         }
 
-        const namedDestinations = getValidDestinations(loadedNavigation.points);
+        const namedDestinations = getValidDestinations(loadedNavigation.points, loadedNavigation.namedLocations);
         navigationLogger.info(
           'NavigationDestinations',
-          ['[NAVIGATION] Named Destinations', ...namedDestinations.map((destination) => `  ${destination.id}`)].join('\n'),
+          [
+            '[NAVIGATION] Named Destinations',
+            ...namedDestinations.map((destination) => `  ${destination.name} -> ${destination.id}`),
+          ].join('\n'),
         );
-        const missingDestinations = NAVIGABLE_DESTINATIONS.filter(
-          (destination) => !namedDestinations.some((valid) => valid.id === destination.id),
-        );
-        if (missingDestinations.length > 0) {
-          navigationLogger.error(
-            'NavigationDestinations',
-            `[NAVIGATION] Configured destinations missing from JSON: ${missingDestinations.map((destination) => destination.id).join(', ')}`,
-          );
-        }
 
-        if (!loadedNavigation.points.some((point) => point.id === ENTRANCE_POINT_ID)) {
-          const message = `Navigation data does not contain a point with ID "${ENTRANCE_POINT_ID}".`;
-          setLoadError(message);
-          navigationLogger.error('NavigationLoadError', message);
-        }
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : String(error);
@@ -145,12 +135,13 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
   );
   const worldPointsRef = useRef(worldPoints);
   const availableDestinations = useMemo<NavigableDestination[]>(
-    () => navigation ? getValidDestinations(navigation.points) : [],
+    () => navigation ? getValidDestinations(navigation.points, navigation.namedLocations) : [],
     [navigation],
   );
+  const entrancePointId = navigation?.namedLocations?.[ENTRANCE_LOCATION_NAME] ?? null;
   const entrancePoint = useMemo(
-    () => navigation?.points.find((point) => point.id === ENTRANCE_POINT_ID) ?? null,
-    [navigation],
+    () => navigation?.points.find((point) => point.id === entrancePointId) ?? null,
+    [entrancePointId, navigation],
   );
   const initialPosition = useMemo(
     () => entrancePoint && modelFrame
@@ -158,43 +149,6 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       : null,
     [cameraHeight, entrancePoint, modelFrame],
   );
-  const initialPointAppliedRef = useRef(false);
-
-  useEffect(() => {
-    if (initialPointAppliedRef.current || !entrancePoint || !initialPosition || !modelFrame) return;
-    initialPointAppliedRef.current = true;
-    currentPointIdRef.current = ENTRANCE_POINT_ID;
-    setCurrentPointId(ENTRANCE_POINT_ID);
-    // Player initial position is set to the same converted value NavigationTracker will apply to the camera.
-    const distanceMeters = 0;
-    navigationLogger.info(
-      'NavigationInitialPosition',
-      [
-        '[NAVIGATION] ENTRANCE INITIALIZATION',
-        '',
-        'JSON Entrance:',
-        `  X = ${entrancePoint.x.toFixed(4)}`,
-        `  Y = ${entrancePoint.y.toFixed(4)}`,
-        '',
-        'Rotation Correction:',
-        '  Angle = 305.00 deg',
-        '  Direction = counter-clockwise (standard rotation of JSON x,y around the origin)',
-        '',
-        'Converted Three.js Entrance:',
-        `  X = ${initialPosition.x.toFixed(4)}`,
-        `  Y = ${initialPosition.y.toFixed(4)}`,
-        `  Z = ${initialPosition.z.toFixed(4)}`,
-        '',
-        'Player Initial Position:',
-        `  X = ${initialPosition.x.toFixed(4)}`,
-        `  Y = ${initialPosition.y.toFixed(4)}`,
-        `  Z = ${initialPosition.z.toFixed(4)}`,
-        '',
-        `Distance (converted Entrance <-> player initial position): ${distanceMeters.toFixed(4)} m`,
-      ].join('\n'),
-    );
-  }, [entrancePoint, initialPosition, modelFrame]);
-
   useEffect(() => {
     worldPointsRef.current = worldPoints;
   }, [worldPoints]);
@@ -205,7 +159,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
   }, []);
 
   const navigateTo = useCallback((nextDestinationId: string) => {
-    const startId = currentPointIdRef.current;
+    const startId = lastNearestPointIdRef.current;
     const loadedNavigation = navigationRef.current;
     if (!startId || !loadedNavigation) {
       setRouteMessage('Current location is not detected yet.');
@@ -223,6 +177,13 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     const graph = buildNavigationGraph(loadedNavigation);
     try {
       const route = findShortestPath(graph, startId, nextDestinationId);
+      if (startId === nextDestinationId && currentPointIdRef.current === startId) {
+        const destinationName = availableDestinations.find((destination) => destination.id === nextDestinationId)?.name ?? 'your destination';
+        setDestinationId(null);
+        setRoute(null);
+        setRouteMessage(`You have arrived at ${destinationName}.`);
+        return;
+      }
       setDestinationId(nextDestinationId);
       setRoute(route);
       setRouteMessage(null);
@@ -239,6 +200,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       );
     } catch (error) {
       setRoute(null);
+      setDestinationId(null);
       const message = error instanceof Error ? error.message : String(error);
       setRouteMessage(message);
       navigationLogger.error(
@@ -274,6 +236,10 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     const pointChanged = detection.currentPointId !== previousPointId;
     const nearestPointId = detection.nearestPoint?.id ?? null;
     const nearestPointChanged = nearestPointId !== lastNearestPointIdRef.current;
+    if (nearestPointChanged) {
+      lastNearestPointIdRef.current = nearestPointId;
+      setRoutingPointId(nearestPointId);
+    }
     const now = performance.now();
     const debugIntervalElapsed = now - lastDebugUpdateAtRef.current >= 750;
 
@@ -295,7 +261,10 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       const route = routeRef.current;
       if (route && detection.currentPointId) {
         if (detection.currentPointId === route.destination) {
-          setRouteMessage(`You have arrived at ${route.destination}.`);
+          const destinationName = availableDestinations.find(
+            (destination) => destination.id === route.destination,
+          )?.name ?? 'your destination';
+          setRouteMessage(`You have arrived at ${destinationName}.`);
           setDestinationId(null);
           setRoute(null);
           navigationLogger.info('NavigationArrival', `[NAVIGATION] Destination reached: ${route.destination}`);
@@ -303,11 +272,14 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
           const loadedNavigation = navigationRef.current;
           if (loadedNavigation && route.destination !== detection.currentPointId) {
             try {
-              const recalculated = findShortestPath(buildNavigationGraph(loadedNavigation), detection.currentPointId, route.destination);
+              const recalculated = findShortestPath(buildNavigationGraph(loadedNavigation), nearestPointId ?? detection.currentPointId, route.destination);
               setRoute(recalculated);
               navigationLogger.info('NavigationRoute', `[NAVIGATION] Route recalculated from ${detection.currentPointId} to ${route.destination}`);
             } catch (error) {
+              setRoute(null);
+              setDestinationId(null);
               setRouteMessage(error instanceof Error ? error.message : String(error));
+              navigationLogger.error('NavigationRoute', `Route recalculation failed: ${String(error)}`);
             }
           }
         }
@@ -338,26 +310,25 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
         Number.POSITIVE_INFINITY,
       );
       const deviated = nearestRouteDistance > ROUTE_DEVIATION_THRESHOLD_METERS;
-      if (deviated && !routeDeviationRef.current && currentPointIdRef.current) {
+      if (deviated && !routeDeviationRef.current && nearestPointId) {
         routeDeviationRef.current = true;
         setRouteMessage('You have left the route. Recalculating...');
         const loadedNavigation = navigationRef.current;
         if (loadedNavigation) {
           try {
-            const recalculated = findShortestPath(buildNavigationGraph(loadedNavigation), currentPointIdRef.current, route.destination);
+            const recalculated = findShortestPath(buildNavigationGraph(loadedNavigation), nearestPointId, route.destination);
             setRoute(recalculated);
             setRouteMessage(null);
           } catch (error) {
+            setRoute(null);
+            setDestinationId(null);
             setRouteMessage(error instanceof Error ? error.message : String(error));
+            navigationLogger.error('NavigationRoute', `Route recalculation failed: ${String(error)}`);
           }
         }
       } else if (!deviated) {
         routeDeviationRef.current = false;
       }
-    }
-
-    if (nearestPointChanged) {
-      lastNearestPointIdRef.current = nearestPointId;
     }
 
     const shouldLogLocation = pointChanged || (
@@ -386,11 +357,12 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
         detectionRadiusMeters: NAVIGATION_POINT_RADIUS_M,
       });
     }
-  }, [routeMessage, setRoute, worldPoints]);
+  }, [availableDestinations, routeMessage, setRoute, worldPoints]);
 
   return {
     buildingName: navigation?.building ?? null,
     currentPointId,
+    routingPointId,
     debugSnapshot,
     debugEnabled: NAVIGATION_DEBUG_ENABLED,
     initialPosition,
