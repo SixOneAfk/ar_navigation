@@ -7,6 +7,7 @@ export function photoCatalog(ready = true): PhotoRouteCatalog {
     disabled_points: [{ id: 'point-05', name: 'Point 5' }],
     points: Array.from({ length: 4 }, (_, index) => ({
       id: `point-0${index + 1}`, name: `Point ${index + 1}`,
+      node_id: index === 0 ? 'Entrance' : index === 1 ? 'P51576' : null,
       reference_count: ready ? 2 : 0, usable_reference_count: ready ? 2 : 0,
       files: ready ? ['front.jpg', 'side.jpg'] : [],
     })),

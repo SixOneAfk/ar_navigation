@@ -263,6 +263,7 @@ class PhotoRouteMatcher:
         self._lock = Lock()
         self._catalog: dict[str, Any] | None = None
         self._references: list[Reference] = []
+        self._point_nodes: dict[str, str | None] = {}
         self._cache: dict[tuple[str, int, int], Features | None] = {}
 
     def _refresh(self, force: bool = False) -> dict[str, Any]:
@@ -281,11 +282,21 @@ class PhotoRouteMatcher:
             raise ValueError("Point IDs must be unique")
         if any(not isinstance(point.get("enabled", True), bool) for point in points):
             raise ValueError("Point enabled flags must be booleans")
+        if any(
+            point.get("node_id") is not None
+            and (
+                not isinstance(point.get("node_id"), str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", point["node_id"])
+            )
+            for point in points
+        ):
+            raise ValueError("Optional point node IDs must contain only letters, digits, hyphens, or underscores")
         disabled_points = [point for point in points if not point.get("enabled", True)]
         points = [point for point in points if point.get("enabled", True)]
         if not points:
             raise ValueError("The route must have at least one enabled point")
         ids = [point["id"] for point in points]
+        nodes_by_point = {point["id"]: point.get("node_id") for point in points}
         files: list[tuple[str, Path, tuple[str, int, int]]] = []
         warnings: list[str] = []
         for point_id in ids:
@@ -326,6 +337,7 @@ class PhotoRouteMatcher:
             references.append(Reference(point_id, path.name, features))
         self._cache = next_cache
         self._references = references
+        self._point_nodes = nodes_by_point
         self._catalog = {
             "id": str(manifest.get("id", "pilot-route")),
             "name": str(manifest.get("name", "Photo route")),
@@ -334,6 +346,7 @@ class PhotoRouteMatcher:
             "reference_root": "apps/cv-service/route_photos" if self.root == DEFAULT_ROOT else str(self.root),
             "points": [
                 {"id": point["id"], "name": str(point.get("name", point["id"])),
+                 "node_id": point.get("node_id"),
                  "reference_count": len(filenames[point["id"]]),
                  "usable_reference_count": len(usable[point["id"]]),
                  "files": filenames[point["id"]]}
@@ -360,6 +373,7 @@ class PhotoRouteMatcher:
         response: dict[str, Any] = {
             "status": "busy", "revision": revision, "expected_point_id": expected_point_id,
             "recognized_point_id": None, "expected_matched": False,
+            "matched_node_id": None,
             "candidate": None, "candidates": [], "margin": 0.0,
             "attempt": None, "attempts": [],
             "query_features": 0, "processing_time_ms": 0.0, "diagnostic_only": True,
@@ -427,6 +441,7 @@ class PhotoRouteMatcher:
                 return response
             response.update(
                 status="matched", recognized_point_id=best["point_id"],
+                matched_node_id=self._point_nodes.get(best["point_id"]),
                 expected_matched=best["point_id"] == expected_point_id,
             )
             return response

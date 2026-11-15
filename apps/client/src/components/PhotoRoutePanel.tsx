@@ -15,6 +15,7 @@ type PhotoRoutePanelProps = {
   modelVisible?: boolean;
   onModelVisibilityChange?: (visible: boolean) => void;
   analysisControls?: ReactNode;
+  onPointConfirmed?: (payload: { pointId: string; pointName: string; nodeId: string | null }) => void;
 };
 
 const STATUS_TEXT: Record<PhotoRouteResult['status'], string> = {
@@ -42,8 +43,9 @@ const REJECTION_TEXT: Record<NonNullable<PhotoRouteAttempt['rejection_reason']>,
 export function PhotoRoutePanel({
   isOpen, onClose, videoRef, cameraActive, cameraRequesting, cameraNotice,
   onEnableCamera, onTrackingChange, modelVisible = true, onModelVisibilityChange, analysisControls,
+  onPointConfirmed,
 }: PhotoRoutePanelProps) {
-  const route = usePhotoRoute(videoRef, cameraActive, isOpen);
+  const route = usePhotoRoute(videoRef, cameraActive, isOpen, onPointConfirmed);
   const { catalog, progress, snapshot, expected, options, complete } = route;
   useEffect(() => {
     onTrackingChange(route.running);
@@ -216,7 +218,9 @@ export function PhotoRoutePanel({
           <p className="camera-panel__diagnostic-note">
             Match scores are geometric quality scores, not probabilities.
             Recognizing a view does not measure arrival distance. No navigation
-            coordinates are changed. Normal structural scans pause while this route runs.
+            coordinates are changed unless the matched point has a configured
+            node mapping; then the camera snaps to that node. Normal structural
+            scans pause while this route runs.
           </p>
         </section>
       )}

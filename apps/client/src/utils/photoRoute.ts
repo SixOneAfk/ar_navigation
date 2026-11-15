@@ -3,6 +3,7 @@ import type { NormalizedPoint } from './cvFrame';
 export type PhotoRoutePoint = {
   id: string;
   name: string;
+  node_id?: string | null;
   reference_count: number;
   usable_reference_count: number;
   files: string[];
@@ -52,6 +53,7 @@ export type PhotoRouteResult = {
   revision: string;
   expected_point_id: string;
   recognized_point_id: string | null;
+  matched_node_id?: string | null;
   expected_matched: boolean;
   candidate: PhotoRouteCandidate | null;
   candidates: PhotoRouteCandidate[];

@@ -63,6 +63,7 @@ type PanelId = 'camera' | 'photo-route' | 'gyro' | 'accel' | 'calibration' | 'co
 
 export default function App() {
   const [openPanel, setOpenPanel] = useState<PanelId>('navigation');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [stepThreshold, setStepThreshold] = useState(DEFAULT_STEP_THRESHOLD);
   const [stepDebounceMs, setStepDebounceMs] = useState(DEFAULT_STEP_DEBOUNCE_MS);
   const [rawDeadband, setRawDeadband] = useState(DEFAULT_RAW_DEADBAND);
@@ -86,6 +87,7 @@ export default function App() {
   const [wallReferenceError, setWallReferenceError] = useState<string | null>(
     WALL_POSE_ENABLED ? null : WALL_POSE_PAUSED_MESSAGE,
   );
+  const [photoRouteSnapPosition, setPhotoRouteSnapPosition] = useState<{ x: number; y: number; z: number } | null>(null);
 
   const accelConfig = useMemo(
     () => ({
@@ -249,6 +251,28 @@ export default function App() {
     lastCvHorizonAppliedAtRef.current = now;
   };
 
+  const handlePhotoRoutePointConfirmed = ({
+    pointId,
+    pointName,
+    nodeId,
+  }: {
+    pointId: string;
+    pointName: string;
+    nodeId: string | null;
+  }) => {
+    if (!nodeId) return;
+    const target = navigation.worldPoints.find((point) => point.id === nodeId);
+    if (!target) {
+      console.warn(`[PHOTO-ROUTE] Confirmed ${pointId} (${pointName}) mapped to ${nodeId}, but this node does not exist in building_navigation.json.`);
+      return;
+    }
+    setPhotoRouteSnapPosition({
+      x: target.position.x,
+      y: target.position.y,
+      z: target.position.z,
+    });
+  };
+
   return (
     <div className="app-shell">
       <CameraPermissionPanel
@@ -265,6 +289,7 @@ export default function App() {
         onModelVisibilityChange={setModelVisible}
         photoRouteOpen={openPanel === 'photo-route'}
         onClosePhotoRoute={() => setOpenPanel(null)}
+        onPhotoRoutePointConfirmed={handlePhotoRoutePointConfirmed}
       />
 
 
@@ -272,55 +297,54 @@ export default function App() {
         <button
           type="button"
           className="control-dock__btn"
-          data-active={openPanel === 'camera'}
-          onClick={() => togglePanel('camera')}
+          data-active={menuOpen}
+          onClick={() => setMenuOpen((current) => !current)}
         >
-          Camera
+          Menu
         </button>
-        <button type="button" className="control-dock__btn" data-active={openPanel === 'photo-route'}
-          onClick={() => togglePanel('photo-route')}>
-          Photo Route
-        </button>
-        <button
-          type="button"
-          className="control-dock__btn"
-          data-active={openPanel === 'gyro'}
-          onClick={() => togglePanel('gyro')}
-        >
-          Gyro
-        </button>
-        <button
-          type="button"
-          className="control-dock__btn"
-          data-active={openPanel === 'accel'}
-          onClick={() => togglePanel('accel')}
-        >
-          Motion
-        </button>
-        <button
-          type="button"
-          className="control-dock__btn"
-          data-active={openPanel === 'calibration'}
-          onClick={() => togglePanel('calibration')}
-        >
-          Tune
-        </button>
-        <button
-          type="button"
-          className="control-dock__btn"
-          data-active={openPanel === 'compass'}
-          onClick={() => togglePanel('compass')}
-        >
-          Compass
-        </button>
-        <button
-          type="button"
-          className="control-dock__btn"
-          data-active={openPanel === 'navigation'}
-          onClick={() => togglePanel('navigation')}
-        >
-          Navigation
-        </button>
+        {menuOpen && (
+          <div className="control-dock__submenu" role="menu" aria-label="Main controls menu">
+            <span className="control-dock__submenu-title">Panels</span>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'camera'}
+              onClick={() => togglePanel('camera')}>
+              Camera
+            </button>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'photo-route'}
+              onClick={() => togglePanel('photo-route')}>
+              Photo Route
+            </button>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'gyro'}
+              onClick={() => togglePanel('gyro')}>
+              Gyro
+            </button>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'accel'}
+              onClick={() => togglePanel('accel')}>
+              Motion
+            </button>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'calibration'}
+              onClick={() => togglePanel('calibration')}>
+              Tune
+            </button>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'compass'}
+              onClick={() => togglePanel('compass')}>
+              Compass
+            </button>
+            <button type="button" className="control-dock__btn control-dock__submenu-btn" data-active={openPanel === 'navigation'}
+              onClick={() => togglePanel('navigation')}>
+              Navigation
+            </button>
+
+            <span className="control-dock__submenu-title">View</span>
+            <button
+              type="button"
+              className="control-dock__btn control-dock__submenu-btn"
+              data-active={!modelVisible}
+              onClick={() => setModelVisible((current) => !current)}
+            >
+              {modelVisible ? 'Hide Model' : 'Show Model'}
+            </button>
+          </div>
+        )}
       </div>
 
       <CompassWidget
@@ -667,6 +691,7 @@ export default function App() {
           verticalAxis={verticalAxis}
           debugVerticalEnabled={debugVerticalEnabled}
           horizonOffsetDeg={horizonOffsetDeg}
+          snapPosition={photoRouteSnapPosition}
           sensitivity={1}
           onPoseChange={(pose) => { cameraPoseRef.current = pose; }}
         />

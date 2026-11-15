@@ -2,8 +2,8 @@
   "id": "pilot-route",
   "name": "Four-point test route",
   "points": [
-    { "id": "point-01", "name": "Point 1 - start viewpoint" },
-    { "id": "point-02", "name": "Point 2" },
+    { "id": "point-01", "name": "Point 1 - start viewpoint", "node_id": "Entrance" },
+    { "id": "point-02", "name": "Point 2", "node_id": "P51576" },
     { "id": "point-03", "name": "Point 3" },
     { "id": "point-04", "name": "Point 4" },
     { "id": "point-05", "name": "Point 5", "enabled": false }

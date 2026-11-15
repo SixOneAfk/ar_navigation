@@ -76,6 +76,11 @@ type CameraPermissionPanelProps = {
   onModelVisibilityChange?: (visible: boolean) => void;
   photoRouteOpen?: boolean;
   onClosePhotoRoute?: () => void;
+  onPhotoRoutePointConfirmed?: (payload: {
+    pointId: string;
+    pointName: string;
+    nodeId: string | null;
+  }) => void;
 };
 
 export function CameraPermissionPanel({
@@ -92,6 +97,7 @@ export function CameraPermissionPanel({
   onModelVisibilityChange,
   photoRouteOpen = false,
   onClosePhotoRoute = () => {},
+  onPhotoRoutePointConfirmed,
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -455,6 +461,7 @@ export function CameraPermissionPanel({
         modelVisible={modelVisible}
         onModelVisibilityChange={onModelVisibilityChange}
         analysisControls={analysisControls}
+        onPointConfirmed={onPhotoRoutePointConfirmed}
       />
 
       {isOpen && (

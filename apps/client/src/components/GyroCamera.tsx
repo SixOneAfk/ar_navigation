@@ -54,6 +54,7 @@ type GyroCameraProps = {
   movementSpeedMetersPerSecond?: number;
   calibrationTarget?: { x: number; y: number; z: number };
   calibrationMoveActive?: boolean;
+  snapPosition?: { x: number; y: number; z: number } | null;
   onPoseChange?: (pose: CameraPoseSnapshot) => void;
   onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
@@ -74,6 +75,7 @@ export function GyroCamera({
   stepStrideMeters = 0.65,
   calibrationTarget,
   calibrationMoveActive = false,
+  snapPosition = null,
   onPoseChange,
   onSensorChange,
 }: GyroCameraProps) {
@@ -110,6 +112,15 @@ export function GyroCamera({
       logger.current.info('GyroCamera', `Base heading set to ${baseHeadingRef.current.toFixed(2)}`);
     }
   }, [active, headingRef, moveMode, orientationRef]);
+
+  useEffect(() => {
+    if (!snapPosition) return;
+    camera.position.set(snapPosition.x, snapPosition.y, snapPosition.z);
+    logger.current.info(
+      'GyroCamera',
+      `Position snap applied: X=${snapPosition.x.toFixed(2)} Y=${snapPosition.y.toFixed(2)} Z=${snapPosition.z.toFixed(2)}`,
+    );
+  }, [camera, snapPosition]);
 
   useFrame((_, delta) => {
     if (!active) return;

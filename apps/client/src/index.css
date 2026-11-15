@@ -57,10 +57,9 @@ body,
   top: 1rem;
   left: 1rem;
   z-index: 25;
-  display: flex;
+  display: grid;
   gap: 0.5rem;
-  flex-wrap: wrap;
-  max-width: calc(100% - 2rem);
+  width: min(260px, calc(100% - 2rem));
 }
 
 .control-dock__btn {
@@ -72,6 +71,35 @@ body,
   font-weight: 600;
   cursor: pointer;
   backdrop-filter: blur(8px);
+}
+
+.control-dock__submenu {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.62rem;
+  border: 1px solid rgba(205, 216, 233, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.control-dock__submenu-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #50627d;
+  text-transform: uppercase;
+  margin-top: 0.2rem;
+}
+
+.control-dock__submenu-title:first-child {
+  margin-top: 0;
+}
+
+.control-dock__submenu-btn {
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
 }
 
 .control-dock__btn[data-active='true'] {

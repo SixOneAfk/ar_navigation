@@ -8,6 +8,7 @@ import {
 
 export function usePhotoRoute(
   videoRef: RefObject<HTMLVideoElement | null>, cameraActive: boolean, isOpen: boolean,
+  onPointConfirmed?: (payload: { pointId: string; pointName: string; nodeId: string | null }) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const catalogRef = useRef<PhotoRouteCatalog | null>(null);
@@ -125,10 +126,23 @@ export function usePhotoRoute(
           return;
         }
         setError('');
-        setProgress((previous) => applyPhotoObservation(
-          previous, result, catalog.points.map((point) => point.id), options.confirmations,
-          capturedAt, options.intervalMs * 3 + 1000,
-        ));
+        setProgress((previous) => {
+          const next = applyPhotoObservation(
+            previous, result, catalog.points.map((point) => point.id), options.confirmations,
+            capturedAt, options.intervalMs * 3 + 1000,
+          );
+          if (next.index > previous.index) {
+            const confirmedPoint = catalog.points[previous.index];
+            if (confirmedPoint) {
+              onPointConfirmed?.({
+                pointId: confirmedPoint.id,
+                pointName: confirmedPoint.name,
+                nodeId: confirmedPoint.node_id ?? null,
+              });
+            }
+          }
+          return next;
+        });
       } catch (caught) {
         if (!disposed && generation === generationRef.current) {
           setProgress(clearPhotoStreak);

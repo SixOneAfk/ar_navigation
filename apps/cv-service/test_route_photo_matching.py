@@ -39,6 +39,7 @@ class PhotoRouteMatcherTests(unittest.TestCase):
             "id": "test", "name": "Test route",
             "points": [{"id": f"point-{index:02d}", "name": f"Point {index}"} for index in range(1, 6)],
         }
+        self.manifest["points"][0]["node_id"] = "P51576"
         (self.root / "route.json").write_text(json.dumps(self.manifest))
         for index in range(1, 6):
             point = self.root / f"point-{index:02d}"
@@ -88,6 +89,12 @@ class PhotoRouteMatcherTests(unittest.TestCase):
         result = self.matcher.analyze(textured_image(4), "point-02", revision)
         self.assertEqual(result["recognized_point_id"], "point-04")
         self.assertFalse(result["expected_matched"])
+
+    def test_returns_configured_node_id_for_a_matched_point(self) -> None:
+        revision = self.matcher.catalog()["revision"]
+        result = self.matcher.analyze(textured_image(1), "point-01", revision)
+        self.assertEqual(result["recognized_point_id"], "point-01")
+        self.assertEqual(result["matched_node_id"], "P51576")
 
     def test_rejects_duplicate_views_assigned_to_different_points(self) -> None:
         cv2.imwrite(str(self.root / "point-03" / "duplicate.jpg"), textured_image(2))

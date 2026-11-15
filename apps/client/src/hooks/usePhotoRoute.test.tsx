@@ -52,6 +52,19 @@ describe('usePhotoRoute', () => {
     expect(result.current.progress.confirmedIds).toEqual(['point-01']);
   });
 
+  it('emits the mapped navigation node when a point becomes confirmed', async () => {
+    const onPointConfirmed = vi.fn();
+    const { result } = renderHook(() => usePhotoRoute(videoRef, true, true, onPointConfirmed));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    act(() => result.current.start());
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(onPointConfirmed).toHaveBeenCalledWith({
+      pointId: 'point-01',
+      pointName: 'Point 1',
+      nodeId: 'Entrance',
+    });
+  });
+
   it('never overlaps requests and discards responses after pausing', async () => {
     let resolve!: (result: PhotoRouteResult) => void;
     vi.mocked(sendPhotoRouteFrame).mockReturnValueOnce(new Promise((done) => { resolve = done; }));

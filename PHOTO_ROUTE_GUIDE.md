@@ -3,7 +3,8 @@
 This browser experiment currently recognizes four ordered camera viewpoints. It does not
 estimate XYZ coordinates, measure arrival distance, or move the navigation camera.
 The first viewpoint is the view at your known start; the other three follow your
-chosen physical route. Point IDs are independent of the building navigation graph.
+chosen physical route. Optionally, each point can include `node_id` in `route.json`
+to map a matched viewpoint to a graph node (for example, `point-01 -> P51576`).
 
 ## Add your photos
 
@@ -41,6 +42,8 @@ Rename points in `route.json` using each point's `name` field. The order in its
 configured, and at least one must be enabled. Point 5 currently has `"enabled": false`;
 its files stay in `point-05/`, but it is not required, indexed, or matched. To restore
 it later, set `"enabled": true` and reload references. Omitting the flag means enabled.
+If needed, add `"node_id": "P51576"` (or another graph node ID) to a point entry.
+When a point is matched, the API response includes this value in `matched_node_id`.
 No restart is needed: click `Reload references` after editing the catalog or photos.
 
 ## What to photograph

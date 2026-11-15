@@ -10,6 +10,7 @@ const ARROW_SCALE = 0.5;
 const ARROW_OPACITY = 0.48;
 const ARROW_FORWARD_DISTANCE = 2.5;
 const ARROW_HEIGHT = 1.55;
+const ARROW_SCREEN_VERTICAL_OFFSET = -0.35;
 const ARROW_MODEL_ROTATION_Y = 0;
 
 type NavigationArrowProps = {
@@ -229,7 +230,11 @@ export function NavigationArrow({
 
     rootRef.current.position.copy(camera.position);
     rootRef.current.quaternion.copy(camera.quaternion);
-    hudAnchorRef.current?.position.set(0, ARROW_HEIGHT - camera.position.y, -ARROW_FORWARD_DISTANCE);
+    hudAnchorRef.current?.position.set(
+      0,
+      ARROW_HEIGHT - camera.position.y + ARROW_SCREEN_VERTICAL_OFFSET,
+      -ARROW_FORWARD_DISTANCE,
+    );
     pulseTimeRef.current += delta;
     readoutElapsedRef.current += delta;
     const pulse = 1 + Math.sin(pulseTimeRef.current * 4) * 0.035;
@@ -281,7 +286,10 @@ export function NavigationArrow({
   const distanceLabel = displayDistance < 1 ? '<1 m' : `${Math.round(displayDistance)} m`;
   return (
     <group ref={rootRef} renderOrder={20}>
-      <group ref={hudAnchorRef} position={[0, ARROW_HEIGHT - camera.position.y, -ARROW_FORWARD_DISTANCE]}>
+      <group
+        ref={hudAnchorRef}
+        position={[0, ARROW_HEIGHT - camera.position.y + ARROW_SCREEN_VERTICAL_OFFSET, -ARROW_FORWARD_DISTANCE]}
+      >
         <group ref={arrowRef}>
           <primitive object={arrowModel.scene} />
         </group>
