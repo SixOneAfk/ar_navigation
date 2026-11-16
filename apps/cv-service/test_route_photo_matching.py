@@ -40,6 +40,7 @@ class PhotoRouteMatcherTests(unittest.TestCase):
             "points": [{"id": f"point-{index:02d}", "name": f"Point {index}"} for index in range(1, 6)],
         }
         self.manifest["points"][0]["node_id"] = "P51576"
+        self.manifest["points"][0]["facing_target_node_id"] = "x6y52"
         (self.root / "route.json").write_text(json.dumps(self.manifest))
         for index in range(1, 6):
             point = self.root / f"point-{index:02d}"
@@ -53,6 +54,7 @@ class PhotoRouteMatcherTests(unittest.TestCase):
             second = self.matcher.catalog()
         self.assertTrue(first["ready"])
         self.assertEqual(len(first["points"]), 5)
+        self.assertEqual(first["points"][0]["facing_target_node_id"], "x6y52")
         self.assertEqual(first["revision"], second["revision"])
         self.assertEqual(extract.call_count, 5)
 

@@ -45,6 +45,10 @@ it later, set `"enabled": true` and reload references. Omitting the flag means e
 If needed, add `"node_id": "P51576"` (or another graph node ID) to a point entry.
 When a point is matched, the API response includes this value in `matched_node_id`.
 No restart is needed: click `Reload references` after editing the catalog or photos.
+Set a point's optional `facing_target_node_id` in `route.json` to an existing point
+ID from `building_navigation.json`. The player teleports using the point's `node_id`
+and faces the target once; points without a facing target keep the existing teleport
+behavior.
 
 ## What to photograph
 

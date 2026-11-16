@@ -80,6 +80,7 @@ type CameraPermissionPanelProps = {
     pointId: string;
     pointName: string;
     nodeId: string | null;
+    facingTargetNodeId: string | null;
   }) => void;
 };
 

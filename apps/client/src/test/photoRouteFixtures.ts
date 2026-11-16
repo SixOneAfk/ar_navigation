@@ -8,6 +8,7 @@ export function photoCatalog(ready = true): PhotoRouteCatalog {
     points: Array.from({ length: 4 }, (_, index) => ({
       id: `point-0${index + 1}`, name: `Point ${index + 1}`,
       node_id: index === 0 ? 'Entrance' : index === 1 ? 'P51576' : null,
+      facing_target_node_id: index === 0 ? 'x6y52' : null,
       reference_count: ready ? 2 : 0, usable_reference_count: ready ? 2 : 0,
       files: ready ? ['front.jpg', 'side.jpg'] : [],
     })),

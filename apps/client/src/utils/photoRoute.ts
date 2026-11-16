@@ -4,6 +4,7 @@ export type PhotoRoutePoint = {
   id: string;
   name: string;
   node_id?: string | null;
+  facing_target_node_id?: string | null;
   reference_count: number;
   usable_reference_count: number;
   files: string[];

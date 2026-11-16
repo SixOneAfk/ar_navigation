@@ -8,7 +8,12 @@ import {
 
 export function usePhotoRoute(
   videoRef: RefObject<HTMLVideoElement | null>, cameraActive: boolean, isOpen: boolean,
-  onPointConfirmed?: (payload: { pointId: string; pointName: string; nodeId: string | null }) => void,
+  onPointConfirmed?: (payload: {
+    pointId: string;
+    pointName: string;
+    nodeId: string | null;
+    facingTargetNodeId: string | null;
+  }) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const catalogRef = useRef<PhotoRouteCatalog | null>(null);
@@ -138,6 +143,7 @@ export function usePhotoRoute(
                 pointId: confirmedPoint.id,
                 pointName: confirmedPoint.name,
                 nodeId: confirmedPoint.node_id ?? null,
+                facingTargetNodeId: confirmedPoint.facing_target_node_id ?? null,
               });
             }
           }

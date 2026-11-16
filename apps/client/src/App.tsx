@@ -88,6 +88,7 @@ export default function App() {
     WALL_POSE_ENABLED ? null : WALL_POSE_PAUSED_MESSAGE,
   );
   const [photoRouteSnapPosition, setPhotoRouteSnapPosition] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [photoRouteSnapFacingTarget, setPhotoRouteSnapFacingTarget] = useState<{ x: number; y: number; z: number } | null>(null);
 
   const accelConfig = useMemo(
     () => ({
@@ -255,22 +256,44 @@ export default function App() {
     pointId,
     pointName,
     nodeId,
+    facingTargetNodeId,
   }: {
     pointId: string;
     pointName: string;
     nodeId: string | null;
+    facingTargetNodeId: string | null;
   }) => {
     if (!nodeId) return;
-    const target = navigation.worldPoints.find((point) => point.id === nodeId);
-    if (!target) {
-      console.warn(`[PHOTO-ROUTE] Confirmed ${pointId} (${pointName}) mapped to ${nodeId}, but this node does not exist in building_navigation.json.`);
+    const positionId = navigation.worldPoints.some((point) => point.id === nodeId)
+      ? nodeId
+      : navigation.availableDestinations.find((destination) => destination.name === nodeId)?.id;
+
+    const position = positionId
+      ? navigation.worldPoints.find((point) => point.id === positionId)
+      : undefined;
+    if (!position) {
+      console.warn(`[PHOTO-ROUTE] Confirmed ${pointId} (${pointName}) maps to missing navigation point ${nodeId}.`);
       return;
     }
+
+    const facingTarget = facingTargetNodeId
+      ? navigation.worldPoints.find((point) => point.id === facingTargetNodeId)
+      : undefined;
+    if (facingTargetNodeId && !facingTarget) {
+      console.warn(`[PHOTO-ROUTE] Confirmed ${pointId} (${pointName}) has missing facing target ${facingTargetNodeId}.`);
+      return;
+    }
+
     setPhotoRouteSnapPosition({
-      x: target.position.x,
-      y: target.position.y,
-      z: target.position.z,
+      x: position.position.x,
+      y: position.position.y,
+      z: position.position.z,
     });
+    setPhotoRouteSnapFacingTarget(facingTarget ? {
+      x: facingTarget.position.x,
+      y: facingTarget.position.y,
+      z: facingTarget.position.z,
+    } : null);
   };
 
   return (
@@ -692,6 +715,7 @@ export default function App() {
           debugVerticalEnabled={debugVerticalEnabled}
           horizonOffsetDeg={horizonOffsetDeg}
           snapPosition={photoRouteSnapPosition}
+          snapFacingTarget={photoRouteSnapFacingTarget}
           sensitivity={1}
           onPoseChange={(pose) => { cameraPoseRef.current = pose; }}
         />

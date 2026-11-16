@@ -15,7 +15,12 @@ type PhotoRoutePanelProps = {
   modelVisible?: boolean;
   onModelVisibilityChange?: (visible: boolean) => void;
   analysisControls?: ReactNode;
-  onPointConfirmed?: (payload: { pointId: string; pointName: string; nodeId: string | null }) => void;
+  onPointConfirmed?: (payload: {
+    pointId: string;
+    pointName: string;
+    nodeId: string | null;
+    facingTargetNodeId: string | null;
+  }) => void;
 };
 
 const STATUS_TEXT: Record<PhotoRouteResult['status'], string> = {

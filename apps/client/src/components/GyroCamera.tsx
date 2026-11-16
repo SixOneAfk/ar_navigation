@@ -55,6 +55,7 @@ type GyroCameraProps = {
   calibrationTarget?: { x: number; y: number; z: number };
   calibrationMoveActive?: boolean;
   snapPosition?: { x: number; y: number; z: number } | null;
+  snapFacingTarget?: { x: number; y: number; z: number } | null;
   onPoseChange?: (pose: CameraPoseSnapshot) => void;
   onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
@@ -76,6 +77,7 @@ export function GyroCamera({
   calibrationTarget,
   calibrationMoveActive = false,
   snapPosition = null,
+  snapFacingTarget = null,
   onPoseChange,
   onSensorChange,
 }: GyroCameraProps) {
@@ -116,11 +118,26 @@ export function GyroCamera({
   useEffect(() => {
     if (!snapPosition) return;
     camera.position.set(snapPosition.x, snapPosition.y, snapPosition.z);
+    if (snapFacingTarget) {
+      const directionX = snapFacingTarget.x - snapPosition.x;
+      const directionZ = snapFacingTarget.z - snapPosition.z;
+      if (directionX !== 0 || directionZ !== 0) {
+        const targetYaw = Math.atan2(-directionX, -directionZ);
+        const activeHeading = headingRef?.current?.fusedHeadingDeg
+          ?? orientationRef.current?.alpha
+          ?? 0;
+        baseHeadingRef.current = activeHeading - THREE.MathUtils.radToDeg(targetYaw);
+
+        euler.current.setFromQuaternion(camera.quaternion, 'YXZ');
+        euler.current.y = targetYaw;
+        camera.quaternion.setFromEuler(euler.current);
+      }
+    }
     logger.current.info(
       'GyroCamera',
       `Position snap applied: X=${snapPosition.x.toFixed(2)} Y=${snapPosition.y.toFixed(2)} Z=${snapPosition.z.toFixed(2)}`,
     );
-  }, [camera, snapPosition]);
+  }, [camera, headingRef, orientationRef, snapFacingTarget, snapPosition]);
 
   useFrame((_, delta) => {
     if (!active) return;

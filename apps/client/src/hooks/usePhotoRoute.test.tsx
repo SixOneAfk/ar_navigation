@@ -62,6 +62,7 @@ describe('usePhotoRoute', () => {
       pointId: 'point-01',
       pointName: 'Point 1',
       nodeId: 'Entrance',
+      facingTargetNodeId: 'x6y52',
     });
   });
 

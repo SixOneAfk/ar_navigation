@@ -2,10 +2,10 @@
   "id": "pilot-route",
   "name": "Four-point test route",
   "points": [
-    { "id": "point-01", "name": "Point 1 - start viewpoint", "node_id": "Entrance" },
-    { "id": "point-02", "name": "Point 2", "node_id": "P51576" },
-    { "id": "point-03", "name": "Point 3" },
-    { "id": "point-04", "name": "Point 4" },
+    { "id": "point-01", "name": "Point 1 - start viewpoint", "node_id": "Entrance", "facing_target_node_id": "x6y52"},
+    { "id": "point-02", "name": "Point 2", "node_id": "x34y52", "facing_target_node_id": "x40y52" },
+    { "id": "point-03", "name": "Point 3", "node_id": "x39y47", "facing_target_node_id": "x39y35" },
+    { "id": "point-04", "name": "Point 4", "node_id": "x33y37", "facing_target_node_id": "x31y35" },
     { "id": "point-05", "name": "Point 5", "enabled": false }
   ]
 }

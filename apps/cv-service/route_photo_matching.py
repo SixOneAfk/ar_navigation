@@ -291,6 +291,20 @@ class PhotoRouteMatcher:
             for point in points
         ):
             raise ValueError("Optional point node IDs must contain only letters, digits, hyphens, or underscores")
+        if any(
+            point.get("facing_target_node_id") is not None
+            and (
+                not isinstance(point.get("facing_target_node_id"), str)
+                or not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}",
+                    point["facing_target_node_id"],
+                )
+            )
+            for point in points
+        ):
+            raise ValueError(
+                "Optional facing target node IDs must contain only letters, digits, hyphens, or underscores"
+            )
         disabled_points = [point for point in points if not point.get("enabled", True)]
         points = [point for point in points if point.get("enabled", True)]
         if not points:
@@ -347,6 +361,7 @@ class PhotoRouteMatcher:
             "points": [
                 {"id": point["id"], "name": str(point.get("name", point["id"])),
                  "node_id": point.get("node_id"),
+                 "facing_target_node_id": point.get("facing_target_node_id"),
                  "reference_count": len(filenames[point["id"]]),
                  "usable_reference_count": len(usable[point["id"]]),
                  "files": filenames[point["id"]]}
