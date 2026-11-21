@@ -30,6 +30,20 @@ describe('CvController', () => {
     jest.restoreAllMocks();
   });
 
+  it('forwards localization reference IDs without an expected route point', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 'no_match', confidence: 0 }), { status: 200 }),
+    );
+    const payload = { image_payload: 'jpeg', reference_ids: ['ref-1'], revision: 'abc' };
+    expect(await controller.matchLocalization(payload)).toEqual({ status: 'no_match', confidence: 0 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/api/v1/localization/match',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(payload) }),
+    );
+    expect(() => controller.matchLocalization({ ...payload, reference_ids: ['../bad'] })).toThrow(BadRequestException);
+    expect(() => controller.matchLocalization({ ...payload, reference_ids: ['ref-1', 'ref-1'] })).toThrow(BadRequestException);
+  });
+
   it('forwards a frame and returns only the CV result metadata', async () => {
     const recalibration = {
       recalibrated: true,

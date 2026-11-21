@@ -46,4 +46,20 @@ describe('NavigationTracker', () => {
     expect(onPlayerPosition).toHaveBeenCalledOnce();
     expect(onPlayerPosition).toHaveBeenCalledWith(camera.position);
   });
+
+  it('reports the camera world heading for navigation after a turn', () => {
+    const onPlayerHeading = vi.fn();
+    camera.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+    render(
+      <NavigationTracker
+        initialPosition={null}
+        points={[{ id: 'entry', position: new THREE.Vector3() }]}
+        onPlayerPosition={vi.fn()}
+        onPlayerHeading={onPlayerHeading}
+      />,
+    );
+    act(() => frameCallback?.({}, 0.1));
+    expect(onPlayerHeading).toHaveBeenLastCalledWith(90);
+    camera.quaternion.identity();
+  });
 });

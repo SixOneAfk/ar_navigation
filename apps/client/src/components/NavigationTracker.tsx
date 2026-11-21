@@ -8,6 +8,7 @@ type NavigationTrackerProps = {
   initialPosition: THREE.Vector3 | null;
   points: WorldNavigationPoint[];
   onPlayerPosition: (position: THREE.Vector3) => void;
+  onPlayerHeading?: (heading: number) => void;
 };
 
 const POSITION_SAMPLE_INTERVAL_SECONDS = 0.1;
@@ -16,11 +17,13 @@ export function NavigationTracker({
   initialPosition,
   points,
   onPlayerPosition,
+  onPlayerHeading,
 }: NavigationTrackerProps) {
   const { camera } = useThree();
   const initializedRef = useRef(false);
   const sampleElapsedRef = useRef(0);
   const logger = useRef(createDebugLogger({ enabled: true }));
+  const forward = useRef(new THREE.Vector3());
 
   useEffect(() => {
     if (initializedRef.current || !initialPosition) return;
@@ -42,6 +45,10 @@ export function NavigationTracker({
     if (sampleElapsedRef.current < POSITION_SAMPLE_INTERVAL_SECONDS) return;
     sampleElapsedRef.current %= POSITION_SAMPLE_INTERVAL_SECONDS;
     onPlayerPosition(camera.position);
+    if (onPlayerHeading) {
+      forward.current.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      onPlayerHeading((Math.atan2(forward.current.x, -forward.current.z) * 180 / Math.PI + 360) % 360);
+    }
   });
 
   return null;

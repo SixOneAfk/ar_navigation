@@ -12,6 +12,7 @@ import { CvScanDto } from './dto/cv-scan.dto';
 import { CvStructuralLinesDto } from './dto/cv-structural-lines.dto';
 import { CvPhotoRouteDto } from './dto/cv-photo-route.dto';
 import { CvSceneAnalysisDto } from './dto/cv-scene-analysis.dto';
+import { CvLocalizationDto } from './dto/cv-localization.dto';
 import { PositioningGrpcClient } from '../position/grpc/positioning-grpc.client';
 
 type MarkerPosition = {
@@ -83,6 +84,46 @@ export class CvController {
 
   constructor(private readonly positioningGrpcClient: PositioningGrpcClient) {
     console.log('[GATEWAY:CvController] Initialized');
+  }
+
+  private async forwardLocalization(path: string, body?: CvLocalizationDto) {
+    try {
+      const response = await fetch(`${this.cvServiceBaseUrl}/api/v1/localization${path}`, {
+        method: body ? 'POST' : 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        if (response.status === 400 || response.status === 422) {
+          throw new BadRequestException(`Localization rejected: ${(await response.text()).slice(0, 240)}`);
+        }
+        throw new BadGatewayException('Localization service returned an error');
+      }
+      return (await response.json()) as Record<string, unknown>;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadGatewayException('Localization service is unavailable or timed out');
+    }
+  }
+
+  @Get('localization/references')
+  localizationReferences() {
+    return this.forwardLocalization('/references');
+  }
+
+  @Post('localization/match')
+  matchLocalization(@Body() dto: CvLocalizationDto) {
+    if (
+      typeof dto.image_payload !== 'string' || !dto.image_payload || dto.image_payload.length > 2_000_000 ||
+      typeof dto.revision !== 'string' || !dto.revision || dto.revision.length > 64 ||
+      !Array.isArray(dto.reference_ids) || dto.reference_ids.length > 256 ||
+      dto.reference_ids.some((id) => typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id)) ||
+      new Set(dto.reference_ids).size !== dto.reference_ids.length
+    ) {
+      throw new BadRequestException('Invalid localization frame, revision, or reference IDs');
+    }
+    return this.forwardLocalization('/match', dto);
   }
 
   private async forwardPhotoRoute(path: string, body?: CvPhotoRouteDto) {

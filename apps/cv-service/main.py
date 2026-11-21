@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from structural_lines import detect_structural_lines
 from wall_pose import estimate_camera_pose
 from route_photo_matching import photo_route_matcher
+from localization_matching import MatchRequest, MatchResponse, localization_matcher
 from scene_analysis import scene_analyzer
 
 try:
@@ -392,6 +393,26 @@ def _estimate_horizon_roll_deg(image: np.ndarray) -> tuple[Optional[float], floa
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "cv-service"}
+
+
+@app.get("/api/v1/localization/references")
+def localization_references() -> dict[str, Any]:
+    try:
+        catalog, revision = localization_matcher.catalog()
+        return {**catalog.model_dump(), "revision": revision}
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/api/v1/localization/match", response_model=MatchResponse)
+def match_localization(payload: MatchRequest) -> MatchResponse:
+    image = _decode_image(payload.image_payload)
+    if image.shape[1] > 1280 or image.shape[0] > 960:
+        raise HTTPException(status_code=400, detail="Localization frames must not exceed 1280x960")
+    try:
+        return localization_matcher.match(image, payload)
+    except (ValueError, OSError, cv2.error) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/api/v1/photo-route")

@@ -13,6 +13,8 @@ import { PhotoRoutePanel } from './PhotoRoutePanel';
 import { SceneAnalysisOverlay } from './SceneAnalysisOverlay';
 import { CvAnalysisControls } from './CvAnalysisControls';
 import { useSceneAnalysis } from '../hooks/useSceneAnalysis';
+import { useCvLocalization } from '../hooks/useCvLocalization';
+import type { NavigationGraph } from '../navigation/graph';
 import type { ModelSceneFrame } from '../navigation/navigationData';
 import {
   selectWallReference,
@@ -82,6 +84,9 @@ type CameraPermissionPanelProps = {
     nodeId: string | null;
     facingTargetNodeId: string | null;
   }) => void;
+  localizationGraph?: NavigationGraph | null;
+  localizationPointId?: string | null;
+  onLocalizationConfirmed?: (reference: { id: string; pointId: string; facingTarget: string | null }) => void;
 };
 
 export function CameraPermissionPanel({
@@ -99,6 +104,9 @@ export function CameraPermissionPanel({
   photoRouteOpen = false,
   onClosePhotoRoute = () => {},
   onPhotoRoutePointConfirmed,
+  localizationGraph = null,
+  localizationPointId = null,
+  onLocalizationConfirmed = () => {},
 }: CameraPermissionPanelProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -127,6 +135,11 @@ export function CameraPermissionPanel({
   const [sceneEnabled, setSceneEnabled] = useState(false);
   const [sceneConfidence, setSceneConfidence] = useState(0.25);
   const [sceneTextEnabled, setSceneTextEnabled] = useState(false);
+  const [localizationEnabled, setLocalizationEnabled] = useState(false);
+  const localization = useCvLocalization(
+    videoRef, localizationEnabled && cameraState === 'granted',
+    localizationGraph, localizationPointId, onLocalizationConfirmed,
+  );
   const scene = useSceneAnalysis(
     videoRef, canvasRef, sceneEnabled && cameraState === 'granted' && !photoRouteActive,
     sceneConfidence, sceneTextEnabled,
@@ -513,6 +526,16 @@ export function CameraPermissionPanel({
           </div>
 
           {analysisControls}
+          <div className="camera-panel__actions">
+            <button type="button" role="switch" aria-checked={localizationEnabled}
+              className="camera-panel__btn camera-panel__btn--secondary"
+              onClick={() => setLocalizationEnabled((enabled) => !enabled)}>
+              CV localization: {localizationEnabled ? 'On' : 'Off'}
+            </button>
+          </div>
+          {localizationEnabled && localization.error && <p role="alert">{localization.error}</p>}
+          {localizationEnabled && !localization.error && localization.catalog?.references.length === 0
+            && <p className="camera-panel__diagnostic-note">No CV localization references are configured yet.</p>}
 
           {sceneEnabled && (
             <div className="camera-panel__scene">

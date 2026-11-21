@@ -143,9 +143,13 @@ describe('useNavigation (real JSON wiring)', () => {
 
     act(() => result.current.observePlayerPosition(new THREE.Vector3(0.5, CAMERA_HEIGHT, 0)));
     expect(result.current.currentPointId).toBe('E');
+    expect(result.current.destinationId).toBe('C');
+    expect(result.current.activeRoute?.points).toEqual(['E', 'A', 'B', 'C']);
     act(() => result.current.observePlayerPosition(new THREE.Vector3(0, CAMERA_HEIGHT, 0)));
     expect(result.current.currentPointId).toBe('E');
     expect(result.current.routingPointId).toBe('A');
+    act(() => result.current.observePlayerPosition(new THREE.Vector3(0, CAMERA_HEIGHT, 0), true));
+    expect(result.current.currentPointId).toBe('A');
     act(() => result.current.navigateTo('B'));
     expect(result.current.activeRoute?.points).toEqual(['A', 'B']);
 

@@ -160,6 +160,26 @@ export function buildNavigationGraph(
   return graph;
 }
 
+export function graphPointsWithinDistance(graph: NavigationGraph, start: string, radius: number): Set<string> {
+  const result = new Set<string>();
+  if (!graph.has(start) || !Number.isFinite(radius) || radius < 0) return result;
+  const distances = new Map<string, number>([[start, 0]]);
+  const queue = new MinHeap<{ id: string; distance: number }>();
+  queue.push({ id: start, distance: 0 }, 0);
+  while (queue.size) {
+    const entry = queue.pop()!;
+    if (entry.distance !== distances.get(entry.id)) continue;
+    result.add(entry.id);
+    for (const edge of graph.get(entry.id)?.edges ?? []) {
+      const distance = entry.distance + edge.distanceMeters;
+      if (distance > radius || distance >= (distances.get(edge.to) ?? Infinity)) continue;
+      distances.set(edge.to, distance);
+      queue.push({ id: edge.to, distance }, distance);
+    }
+  }
+  return result;
+}
+
 export function findShortestPath(graph: NavigationGraph, start: string, destination: string): NavigationPath {
   if (!graph.has(start)) throw new Error(`Navigation point not found: ${start}`);
   if (!graph.has(destination)) throw new Error(`Navigation point not found: ${destination}`);

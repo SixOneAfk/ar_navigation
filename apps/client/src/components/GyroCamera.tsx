@@ -56,6 +56,7 @@ type GyroCameraProps = {
   calibrationMoveActive?: boolean;
   snapPosition?: { x: number; y: number; z: number } | null;
   snapFacingTarget?: { x: number; y: number; z: number } | null;
+  onSnapApplied?: (camera: THREE.Camera) => void;
   onPoseChange?: (pose: CameraPoseSnapshot) => void;
   onSensorChange?: (snapshot: { alpha: number; beta: number; gamma: number; x: number; y: number; z: number }) => void;
 };
@@ -78,6 +79,7 @@ export function GyroCamera({
   calibrationMoveActive = false,
   snapPosition = null,
   snapFacingTarget = null,
+  onSnapApplied,
   onPoseChange,
   onSensorChange,
 }: GyroCameraProps) {
@@ -95,6 +97,8 @@ export function GyroCamera({
   const baseHeadingRef = useRef<number | null>(null);
   const lastJoystickLogAtRef = useRef(0);
   const lastMovementLogAtRef = useRef(0);
+  const onSnapAppliedRef = useRef(onSnapApplied);
+  onSnapAppliedRef.current = onSnapApplied;
 
   useEffect(() => {
     if (!active) {
@@ -133,6 +137,7 @@ export function GyroCamera({
         camera.quaternion.setFromEuler(euler.current);
       }
     }
+    onSnapAppliedRef.current?.(camera);
     logger.current.info(
       'GyroCamera',
       `Position snap applied: X=${snapPosition.x.toFixed(2)} Y=${snapPosition.y.toFixed(2)} Z=${snapPosition.z.toFixed(2)}`,

@@ -133,6 +133,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
       : [],
     [cameraHeight, modelFrame, navigation],
   );
+  const graph = useMemo(() => navigation ? buildNavigationGraph(navigation) : null, [navigation]);
   const worldPointsRef = useRef(worldPoints);
   const availableDestinations = useMemo<NavigableDestination[]>(
     () => navigation ? getValidDestinations(navigation.points, navigation.namedLocations) : [],
@@ -223,13 +224,13 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     routeDeviationRef.current = false;
   }, [setRoute]);
 
-  const observePlayerPosition = useCallback((position: THREE.Vector3) => {
+  const observePlayerPosition = useCallback((position: THREE.Vector3, resetPoint = false) => {
     if (worldPoints.length === 0) return;
 
     const detection = detectNavigationPoint(
       position,
       worldPoints,
-      currentPointIdRef.current,
+      resetPoint ? null : currentPointIdRef.current,
     );
 
     const previousPointId = currentPointIdRef.current;
@@ -369,6 +370,7 @@ export function useNavigation(modelFrame: ModelSceneFrame | null, cameraHeight: 
     loadError,
     alignmentWarning: null,
     worldPoints,
+    graph,
     observePlayerPosition,
     navigationPoints: navigation?.points ?? [],
     availableDestinations,

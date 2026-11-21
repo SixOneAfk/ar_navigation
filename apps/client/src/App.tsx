@@ -12,7 +12,8 @@ import { VirtualJoystick, type JoystickValue } from './components/VirtualJoystic
 import { useGyroscope } from './hooks/useGyroscope';
 import { useCompass } from './hooks/useCompass';
 import { useAcceleration } from './hooks/useAcceleration';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ElementRef } from 'react';
+import * as THREE from 'three';
 import { useNavigation } from './navigation/useNavigation';
 import type { ModelSceneFrame } from './navigation/navigationData';
 import { calculateRollBiasDeg } from './utils/cvRoll';
@@ -87,8 +88,10 @@ export default function App() {
   const [wallReferenceError, setWallReferenceError] = useState<string | null>(
     WALL_POSE_ENABLED ? null : WALL_POSE_PAUSED_MESSAGE,
   );
-  const [photoRouteSnapPosition, setPhotoRouteSnapPosition] = useState<{ x: number; y: number; z: number } | null>(null);
-  const [photoRouteSnapFacingTarget, setPhotoRouteSnapFacingTarget] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [snapPosition, setSnapPosition] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [snapFacingTarget, setSnapFacingTarget] = useState<{ x: number; y: number; z: number } | null>(null);
+  const orbitControlsRef = useRef<ElementRef<typeof OrbitControls>>(null);
+  const pendingLocalizationSnapRef = useRef(false);
 
   const accelConfig = useMemo(
     () => ({
@@ -131,11 +134,6 @@ export default function App() {
       requestAccelPermission(),
     ]);
   };
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setHeadingDegrees(headingRef.current.fusedHeadingDeg), 250);
-    return () => window.clearInterval(timer);
-  }, [headingRef]);
 
   useEffect(() => {
     setJoystick({ x: 0, y: 0 });
@@ -284,16 +282,38 @@ export default function App() {
       return;
     }
 
-    setPhotoRouteSnapPosition({
+    setSnapPosition({
       x: position.position.x,
       y: position.position.y,
       z: position.position.z,
     });
-    setPhotoRouteSnapFacingTarget(facingTarget ? {
+    setSnapFacingTarget(facingTarget ? {
       x: facingTarget.position.x,
       y: facingTarget.position.y,
       z: facingTarget.position.z,
     } : null);
+  };
+
+  const handleLocalizationConfirmed = (reference: { id: string; pointId: string; facingTarget: string | null }) => {
+    const position = navigation.worldPoints.find((point) => point.id === reference.pointId)?.position;
+    if (!position) throw new Error(`Localization reference ${reference.id}: graph point ${reference.pointId} is unavailable.`);
+    const target = reference.facingTarget
+      ? navigation.worldPoints.find((point) => point.id === reference.facingTarget)?.position
+      : undefined;
+    if (reference.facingTarget && !target) {
+      throw new Error(`Localization reference ${reference.id}: facing point ${reference.facingTarget} is unavailable.`);
+    }
+    if (target && target.x === position.x && target.z === position.z) {
+      throw new Error(`Localization reference ${reference.id}: facing point must differ from its position.`);
+    }
+    pendingLocalizationSnapRef.current = true;
+    setSnapPosition({ x: position.x, y: position.y, z: position.z });
+    setSnapFacingTarget(target ? { x: target.x, y: target.y, z: target.z } : null);
+    cameraPoseRef.current.position = { x: position.x, y: position.y, z: position.z };
+    navigation.observePlayerPosition(new THREE.Vector3(position.x, position.y, position.z), true);
+    if (target) {
+      setHeadingDegrees((Math.atan2(target.x - position.x, position.z - target.z) * 180 / Math.PI + 360) % 360);
+    }
   };
 
   return (
@@ -313,6 +333,9 @@ export default function App() {
         photoRouteOpen={openPanel === 'photo-route'}
         onClosePhotoRoute={() => setOpenPanel(null)}
         onPhotoRoutePointConfirmed={handlePhotoRoutePointConfirmed}
+        localizationGraph={navigation.graph}
+        localizationPointId={navigation.routingPointId}
+        onLocalizationConfirmed={handleLocalizationConfirmed}
       />
 
 
@@ -689,6 +712,7 @@ export default function App() {
           initialPosition={navigation.initialPosition}
           points={navigation.worldPoints}
           onPlayerPosition={navigation.observePlayerPosition}
+          onPlayerHeading={setHeadingDegrees}
         />
 
         <NavigationRouteLine route={navigation.activeRoute} points={navigation.worldPoints} />
@@ -714,14 +738,24 @@ export default function App() {
           verticalAxis={verticalAxis}
           debugVerticalEnabled={debugVerticalEnabled}
           horizonOffsetDeg={horizonOffsetDeg}
-          snapPosition={photoRouteSnapPosition}
-          snapFacingTarget={photoRouteSnapFacingTarget}
+          snapPosition={snapPosition}
+          snapFacingTarget={snapFacingTarget}
+          onSnapApplied={(camera) => {
+            if (!pendingLocalizationSnapRef.current) return;
+            pendingLocalizationSnapRef.current = false;
+            const controls = orbitControlsRef.current;
+            if (controls) {
+              const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+              controls.target.copy(camera.position).add(forward);
+              controls.update();
+            }
+          }}
           sensitivity={1}
           onPoseChange={(pose) => { cameraPoseRef.current = pose; }}
         />
 
         {/* OrbitControls only when gyro is off (mouse/touch drag on desktop) */}
-        {!cameraActive && <OrbitControls target={[0, 1.2, 0]} />}
+        {!cameraActive && <OrbitControls ref={orbitControlsRef} target={[0, 1.2, 0]} />}
       </Canvas>
     </div>
   );
